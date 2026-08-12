@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Maverick Performance",
+    "slug": "maverick-core",
+    "scheme": "maverick",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "backgroundColor": "#0D0F11",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.maverick.core"
+    },
+    "android": {
+      "package": "com.maverick.core",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

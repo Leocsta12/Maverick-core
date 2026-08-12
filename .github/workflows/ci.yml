@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Espelha o setup local: --legacy-peer-deps por causa do conflito de
+      # versão entre react/react-dom que o Expo puxa internamente (ver README).
+      - name: Instalar dependências
+        run: npm install --legacy-peer-deps
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Testes
+        run: npm test -- --ci

@@ -1,0 +1,391 @@
+# Maverick Core
+
+Plataforma Maverick Performance: autenticação (login/cadastro, via Supabase Auth),
+dashboard com o **Maverick Score** — o elemento visual de assinatura do produto,
+calculado a partir de dados reais de sono/HRV/FC/passos — e sete módulos
+funcionando: **Health**, **Vision**, **Hábitos**, **Treinos**, **Nutrition**,
+**Planner** e **Coach**.
+
+Stack: **Expo SDK 57 + Expo Router + TypeScript + Supabase** (Auth, Postgres,
+Storage, Edge Functions) + **Claude API** (análise de fotos em Vision).
+
+## Rodando o projeto
+
+Pré-requisitos: Node.js 22+ e o app **Expo Go** no celular (ou um simulador
+iOS/Android configurado), mais um projeto Supabase configurado (veja abaixo).
+
+```bash
+# 1. Entre na pasta do projeto
+cd maverick-core
+
+# 2. Instale as dependências
+npm install --legacy-peer-deps
+
+# 3. Alinhe as versões nativas com o Expo SDK 57
+npx expo install --fix
+
+# 4. Configure as variáveis de ambiente (veja "Configuração" abaixo)
+cp .env.example .env.local
+# preencha EXPO_PUBLIC_SUPABASE_URL e EXPO_PUBLIC_SUPABASE_ANON_KEY
+
+# 5. Inicie o servidor de desenvolvimento
+npx expo start
+```
+
+Pra rodar o typecheck e os testes (não exigem Supabase configurado — ver
+"Testes e CI" abaixo):
+
+```bash
+npm run lint    # tsc --noEmit
+npm test        # jest
+```
+
+Depois do `expo start`, escaneie o QR code com o app **Expo Go** (Android) ou a
+câmera (iOS), ou pressione `i` / `a` no terminal para abrir num simulador, ou
+`w` para abrir no navegador.
+
+> `--legacy-peer-deps` é necessário por um conflito de versão entre `react` e
+> `react-dom` que o Expo puxa internamente — não afeta o funcionamento do app.
+
+## Configuração (Supabase + Claude API)
+
+1. Crie um projeto em [supabase.com](https://supabase.com).
+2. No **SQL Editor**, rode o conteúdo inteiro de [`supabase/schema.sql`](supabase/schema.sql)
+   — idempotente, pode rodar de novo sem duplicar nada.
+3. Confirmação de e-mail já vem **ligada** por padrão no Supabase (e é o que
+   este projeto espera — veja "Autenticação" abaixo). Só desmarque **Confirm
+   email** em Authentication > Providers > Email se quiser voltar ao cadastro
+   instantâneo pra testes locais.
+4. Em **Settings > API**, copie a **Project URL** e a **anon/public key** para
+   `.env.local` (nunca a `service_role key`).
+5. Para o módulo **Vision** (análise de fotos por IA), publique a Edge Function
+   e configure o segredo da Claude API:
+   ```bash
+   npx supabase functions deploy analyze-vision --project-ref <seu-ref>
+   npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-... --project-ref <seu-ref>
+   ```
+   A chave vem de [console.anthropic.com](https://console.anthropic.com) e
+   **nunca** deve entrar no código do app — só nesse segredo da Edge Function.
+6. Para o módulo **Health > Atividades** (integração real com o Strava):
+   1. Crie um app em [strava.com/settings/api](https://www.strava.com/settings/api).
+      Em **Authorization Callback Domain**, use exatamente o domínio do seu
+      projeto Supabase (ex: `SEU-PROJETO.supabase.co`, sem `https://` nem
+      barra no final).
+   2. Publique as duas Edge Functions e configure os segredos:
+      ```bash
+      npx supabase functions deploy strava-oauth-callback --project-ref <seu-ref> --no-verify-jwt
+      npx supabase functions deploy strava-sync --project-ref <seu-ref>
+      npx supabase secrets set STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... --project-ref <seu-ref>
+      ```
+      `--no-verify-jwt` na primeira é necessário porque o Strava chama esse
+      endpoint direto (sem conseguir mandar um header de autenticação nosso).
+   3. Adicione `EXPO_PUBLIC_STRAVA_CLIENT_ID` (mesmo valor do Client ID, é
+      público por design em qualquer OAuth) no `.env.local`.
+7. Para o **Maverick Coach IA** (geração de treino por IA em Treinos), publique
+   a Edge Function — reaproveita o mesmo segredo `ANTHROPIC_API_KEY` já
+   configurado no passo 5, não precisa configurar de novo:
+   ```bash
+   npx supabase functions deploy generate-workout-plan --project-ref <seu-ref>
+   ```
+8. **Nutrition** não precisa de nenhum segredo novo — é só schema (tabelas
+   `nutrition_meals`, `nutrition_water_logs`, `nutrition_goals`) já incluído
+   no passo 2.
+
+## Autenticação
+
+- **Cadastro** exige confirmação de e-mail: a conta é criada, mas o login só
+  funciona depois de clicar no link enviado. A tela de cadastro mostra
+  "Confira seu e-mail" nesse meio-tempo (não é erro).
+- **Login com e-mail não confirmado** mostra a mensagem certa e um botão
+  "Reenviar e-mail de confirmação".
+- **Esqueci minha senha** (`/forgot-password`): envia link de recuperação via
+  `supabase.auth.resetPasswordForEmail`. O link leva pra `/reset-password`
+  — essa tela fica **fora** dos grupos `(auth)`/`(app)` de propósito, porque
+  o link autentica a pessoa numa sessão temporária pra provar que ela é dona
+  do e-mail, e o layout de `(auth)` redirecionaria pro dashboard antes dela
+  poder trocar a senha.
+- ⚠️ **O serviço de e-mail padrão do Supabase tem um rate limit bem baixo**
+  (poucos e-mails por hora) — ótimo pra testar, **não serve pra produção**.
+  Antes de usuários reais, configure um provedor de SMTP próprio em
+  **Authentication > Settings > SMTP Settings** (Resend, SendGrid, Postmark,
+  Amazon SES etc.).
+
+## Estrutura
+
+```
+app/
+  _layout.tsx              # carrega fontes, provider de auth, status bar, <AlertHost/>
+  index.tsx                 # redireciona para /login ou /dashboard
+  (auth)/
+    login.tsx
+    signup.tsx
+    forgot-password.tsx      # pede o link de recuperação
+  reset-password.tsx        # fora dos grupos — ver "Autenticação" abaixo
+  (app)/
+    _layout.tsx              # abas visíveis: Painel / Treinos / Health / Nutrition / Mais
+    dashboard.tsx             # Mission Control: Score + Daily Brief + treino/nutrição de hoje
+    health.tsx                # registro manual de sono/HRV/FC/passos + histórico
+    vision.tsx                 # fotos de progresso + comparação lado a lado + análise IA (fora da tabBar, ver Mais)
+    mission.tsx                # Hábitos: checklist diário com sequência (fora da tabBar, ver Mais)
+    treinos.tsx                # plano semanal de treino do próprio atleta (usa WorkoutWeek)
+    nutrition.tsx               # refeições, água e metas diárias
+    coach.tsx                  # vínculo treinador↔atleta + painel agregado por atleta (fora da tabBar, ver Mais)
+    profile.tsx                # fora da tabBar, ver Mais
+    planner.tsx                 # semana unificada: treino + nutrição + recuperação por dia (fora da tabBar, ver Mais)
+    mais.tsx                   # menu com Planner / Hábitos / Vision / Coach / Perfil / Sair
+src/
+  components/                # Button, TextField, MaverickScoreRing, ModuleCard, WorkoutWeek, TrendChart, OfflineBanner
+  context/AuthContext.tsx     # autenticação via Supabase Auth
+  theme/tokens.ts             # cores, tipografia, espaçamento — a identidade visual
+  lib/
+    supabase.ts               # client do Supabase
+    storage.ts                 # wrapper sobre AsyncStorage
+    offlineCache.ts             # cache local "read-through" (Offline Fase 1 — só leitura)
+    alert.tsx                  # showAlert + <AlertHost/> — substitui Alert.alert (no-op no web)
+    health.ts                  # dados + cálculo do Maverick Score
+    missionControl.ts           # compõe o Daily Brief do Painel (Score + treino + nutrição de hoje)
+    coachOverview.ts             # compõe score + check-in de cada atleta no painel do Coach
+    vision.ts                  # upload/listagem de fotos + chamada à análise IA
+    mission.ts                 # hábitos, conclusões e cálculo de streak
+    nutrition.ts                # refeições, água, metas diárias e totais do dia
+    coach.ts                   # código de vínculo, pedidos, listagem de atletas/treinadores
+    strava.ts                  # URL de autorização, status, sincronização, formatação
+    workouts.ts                # plano semanal, catálogo de exercícios, registro de séries, geração por IA
+supabase/
+  schema.sql                  # schema completo (tabelas, RLS, bucket de Storage)
+  functions/
+    analyze-vision/            # Edge Function que chama a Claude API (visão)
+    strava-oauth-callback/      # troca o code do Strava por tokens, salva a conexão
+    strava-sync/                 # busca atividades recentes e grava em strava_activities
+    generate-workout-plan/        # Edge Function que chama a Claude API (Maverick Coach IA)
+.github/
+  workflows/ci.yml               # typecheck + testes a cada push/PR pra main
+jest.config.js                   # preset jest-expo, setup, testMatch
+jest.setup.js                    # env falso do Supabase + mock do AsyncStorage pros testes
+```
+
+## Navegação
+
+A barra inferior mostra só 5 abas (Painel, Treinos, Health, Nutrition, Mais) —
+as menos usadas no dia a dia (Hábitos, Vision, Coach, Perfil) viraram itens
+dentro de **Mais**, pra não apertar a barra em telas de celular menores.
+Continuam sendo rotas normais (Expo Router `href: null` só tira da tabBar, a
+tela segue navegável), só mudou onde o atalho mora. O módulo de hábitos
+(`mission.tsx`) foi renomeado de "Mission" pra "Hábitos" na UI — o nome
+"Mission" colidia com "Mission Control", como a tela inicial é chamada na
+visão de produto (ver análise de plataforma).
+
+## Offline (Fase 1 — só leitura)
+
+**Treinos** e **Health** funcionam sem internet pra leitura — são os dois
+módulos onde faz mais sentido abrir sem sinal (academia, corrida). Padrão
+"cache read-through" em [`src/lib/offlineCache.ts`](src/lib/offlineCache.ts):
+`loadWithCache(chave, fetcher)` tenta buscar do Supabase e, se der certo,
+salva no `AsyncStorage` pra próxima vez; se a busca falhar (sem sinal, ou
+qualquer erro de rede) e existir algo salvo antes, devolve o cache em vez de
+quebrar a tela — e mostra o aviso `<OfflineBanner/>` com o horário do último
+dado salvo. **Escrita continua exigindo conexão** — registrar treino/sono
+offline com fila de sincronização automática é fase 2, não esta. Os outros
+módulos (Vision, Nutrition, Coach, Hábitos) ainda exigem conexão pra tudo.
+
+Testado simulando perda de rede de verdade (bloqueando as chamadas
+`/rest/v1/` do Supabase no navegador, mantendo `/auth/v1/` liberado pra não
+travar o login): com o cache já populado, Treinos e Health continuaram
+mostrando os dados certos com o aviso de offline; sem cache pra aquele dado
+específico (ex: um dia do plano nunca aberto antes), o app mostra um erro
+amigável em vez de travar.
+
+## Nota técnica: Alert no web
+
+`Alert.alert` do React Native **não faz nada no react-native-web** (é um
+no-op silencioso — dá pra conferir em
+`node_modules/react-native-web/src/exports/Alert`). Isso quebrava toda
+mensagem de erro/sucesso e toda confirmação do app quando rodando no
+navegador (`w` no `expo start`), embora funcionasse normalmente em
+iOS/Android via Expo Go. Corrigido com [`src/lib/alert.tsx`](src/lib/alert.tsx):
+`showAlert(title, message?, buttons?)` é um substituto direto (mesma
+assinatura) que, no web, renderiza um modal próprio via `<AlertHost/>`
+(montado uma vez em `app/_layout.tsx`); fora do web, chama o `Alert.alert`
+nativo de sempre. Todo o app já usa `showAlert` no lugar de `Alert.alert`.
+
+## Testes e CI
+
+`jest` + `jest-expo` (o preset oficial da Expo, já traz os mocks de módulo
+nativo prontos). Fase 1: só testes de unidade sobre lógica pura em
+`src/lib/*.ts` — cálculo do Maverick Score, streak de hábitos, totais de
+nutrição, status de check-in do Coach, composição do Daily Brief e o cache
+offline. Sem testes de componente/tela ainda (exigiriam
+`@testing-library/react-native`, é o próximo passo natural).
+
+```bash
+npm test              # roda tudo uma vez
+npm test -- --watch   # modo watch, roda de novo a cada salvamento
+```
+
+Os testes **não precisam de Supabase configurado** — `jest.setup.js` define
+um `EXPO_PUBLIC_SUPABASE_URL`/`ANON_KEY` falso só pra permitir os módulos
+carregarem (`src/lib/supabase.ts` lança erro no import se não estiverem
+definidos), e mocka `AsyncStorage` com o mock oficial do próprio pacote. É
+por isso que dá pra rodar em CI sem segredo nenhum.
+
+**CI** (`.github/workflows/ci.yml`): a cada push/PR pra `main`, roda
+`npm run lint` (typecheck) e `npm test`. Só ativa de verdade quando o
+projeto for empurrado pra um repositório no GitHub — hoje a pasta local
+ainda não é um repositório git.
+
+As **Edge Functions** (`supabase/functions/*`, Deno) ficam de fora dessa
+suíte de propósito — é outro runtime, exigiria `deno test` numa esteira
+separada. Não entrou nessa rodada; fica como próximo passo se quiser
+cobertura ali também.
+
+## Identidade visual
+
+Definida em `src/theme/tokens.ts`: base grafite (não preto puro), um único
+acento "ignição" em laranja para ações e dados de alta intensidade, tipografia
+Space Grotesk (display) + Inter (corpo) + JetBrains Mono (leituras tipo
+instrumento). O `MaverickScoreRing` é o elemento de assinatura — um mostrador
+com marcações, não uma barra de progresso genérica.
+
+## Módulos
+
+- **Painel (Mission Control)** — a tela inicial. Além do Maverick Score, traz
+  um **Daily Brief** que combina o insight de recuperação (Health) com o
+  treino e a nutrição do dia (Treinos/Nutrition) — sempre tentando terminar
+  com **uma** próxima ação concreta (ex: "seu treino de hoje ainda não foi
+  feito — 6 exercícios te esperando"), nunca uma lista de pendências, pra não
+  virar ruído (Simplicity First). É lógica pura em
+  [`src/lib/missionControl.ts`](src/lib/missionControl.ts) — hoje é regra
+  determinística, dá pra trocar por um resumo gerado por IA depois sem mexer
+  na tela. Dois cards mostram o resumo de hoje (treino: dia/exercícios/
+  concluído; nutrição: água e calorias vs. metas) com atalho direto pro
+  módulo. Chamava-se "Painel"; o nome interno/visual virou "Mission Control"
+  porque é isso que a tela já faz — o módulo de hábitos que usava esse nome
+  antes foi renomeado pra "Hábitos" (ver "Navegação" abaixo).
+- **Health** — registro manual de sono, HRV, FC de repouso, passos, peso e
+  % de gordura (opcional). O Maverick Score é calculado a partir dos
+  quatro primeiros (sono 35%, HRV 30%, FC de repouso 20%, passos 15%, com
+  linha de base pessoal pros sinais fisiológicos) — peso e % de gordura
+  não entram no Score (propósito diferente: alimentam os gráficos de
+  tendência em Vision, não a leitura de recuperação do dia). Tem também
+  **integração real com o Strava** (seção "Atividades"): conecta via OAuth,
+  sincroniza corridas/pedais/natação/etc. Os tokens do Strava nunca ficam
+  legíveis pelo app nem pelo dono da conta — só as Edge Functions, via
+  `service_role`, os tocam. Integração com Garmin (aguardando aprovação do
+  Developer Program) e Apple HealthKit (precisa de build nativo) seguem
+  como próximos passos, escrevendo na mesma `health_entries`.
+- **Vision (Evolução)** — fotos de progresso guardadas num bucket privado do
+  Supabase Storage, comparação lado a lado sempre por data, e análise
+  qualitativa por IA (Claude, via Edge Function) — nunca estima métricas
+  numéricas (% de gordura, peso) nem julga aparência; foco em observações
+  educativas e encorajadoras, calibradas para iniciantes. Também traz uma
+  seção de **Tendências**: gráficos de peso, sono e HRV dos últimos 30 dias,
+  puxados de `health_entries` — mesmos dados do módulo Health, só
+  visualizados ao longo do tempo em vez de só o registro do dia. O gráfico
+  (`src/components/TrendChart.tsx`) é `react-native-svg` direto — a mesma
+  lib já usada no `MaverickScoreRing` — sem puxar uma biblioteca de
+  gráficos externa só pra isso.
+- **Hábitos** (`mission.tsx`) — checklist de hábitos diário com sequência
+  (streak) calculada a partir do histórico de conclusões.
+- **Nutrition** — registro manual de refeições (café da manhã/almoço/lanche/
+  jantar/outro, com calorias e macros opcionais) e água (registrada em
+  "doses" — cada toque em "+200ml" vira uma linha, o total do dia é somado
+  na hora de exibir). Metas diárias de calorias/macros/água são opcionais —
+  sem elas, a tela só mostra o total do dia, sem comparar com uma meta. Mesmo
+  espírito do Health: o formato já é o que uma integração futura (leitor de
+  rótulo, parceria com food database) vai escrever, só troca quem grava.
+- **Treinos** — plano semanal completo por atleta (7 dias, um pode ser
+  marcado como descanso), com catálogo de exercícios **compartilhado** entre
+  todos os usuários (`exercises` — não é por-usuário, é uma tabela de
+  referência tipo "todo mundo pode ler, quem cadastrou pode editar"). Cada
+  exercício aceita **foto** (upload, guardada no bucket público
+  `exercise-media` — público porque é conteúdo de referência, não dado
+  pessoal) e **vídeo de execução** (link colado, ex. YouTube — o app não gera
+  nem hospeda vídeo próprio). O atleta registra a execução real (séries,
+  reps, carga) por dia, e marca o dia como concluído — isso é sempre
+  autorreportado, o treinador nunca marca por ele. Já o **treinador
+  vinculado (aceito) tem permissão de escrita no plano** do atleta (montar
+  os dias, adicionar/remover exercícios) — é o único módulo do app onde o
+  treinador escreve, e não só lê; a tela do Coach (`coach.tsx`) reusa o
+  mesmo componente `WorkoutWeek` só que com um atleta alvo diferente do
+  usuário logado. Testado ponta a ponta: atleta monta e executa o próprio
+  treino, treinador monta o treino de um atleta vinculado e o atleta vê a
+  mudança aparecer no próprio app (mesmo plano, não uma cópia).
+
+  **Maverick Coach IA** — pra quem treina sozinho (ou como ponto de partida
+  pro treinador ajustar): a IA (Claude, via Edge Function
+  `generate-workout-plan`, tool-use forçado pra devolver JSON estruturado)
+  monta o plano semanal completo a partir de nível
+  (iniciante/intermediário/avançado — calibra volume, complexidade e faixa
+  de reps), objetivo e equipamento opcionais, e número de dias de treino por
+  semana — distribui os dias de treino ao longo da semana em vez de
+  empilhar, e prefere reaproveitar exercícios já cadastrados no catálogo
+  (mantém foto/vídeo vinculados). **A IA nunca prescreve carga** — só
+  estrutura (dias, exercícios, séries, faixa de reps); a carga real é
+  sempre o que o atleta registra ao executar o treino. Testado ao vivo:
+  gerado um plano de 4 dias (intermediário, objetivo hipertrofia) com a
+  semana bem distribuída (treino-descanso intercalados) e todos os
+  exercícios com faixas de reps, sem nenhuma carga sugerida.
+- **Coach** — vínculo treinador↔atleta por código, com aprovação manual dos
+  dois lados (ninguém aceita o próprio pedido). Qualquer usuário pode ser
+  treinador e atleta ao mesmo tempo — não há papéis fixos. Só depois do
+  vínculo **aceito** o treinador ganha acesso ao Maverick Score, hábitos,
+  nutrição e fotos de progresso do atleta (via policies de RLS extras em
+  cada tabela — nunca antes, e sempre **só leitura**). A única exceção é o
+  plano de **Treinos**: ali o treinador ganha leitura *e escrita*, porque o
+  próprio propósito do acesso é montar o treino da pessoa — a execução em si
+  (séries/reps/carga, marcar o dia como feito) continua sempre só do
+  atleta. A tela do Coach ainda não tem uma seção visual de Nutrition por
+  atleta — a política de RLS já permite, só falta a UI (ver roadmap na
+  análise de plataforma).
+
+  **Painel de todos os atletas** — "Seus atletas" deixou de ser só uma lista
+  de nomes: cada linha mostra o Maverick Score e um **check-in** — a data da
+  atividade mais recente do atleta em qualquer módulo (Health, Treinos,
+  Hábitos ou Nutrition; `src/lib/coachOverview.ts`). Não é uma ação própria
+  que o atleta precisa fazer — é um proxy honesto de "ainda está usando o
+  app", derivado do que ele já registra normalmente. A lista é ordenada com
+  quem está **sem check-in há mais de 3 dias primeiro** (bolinha vermelha),
+  depois há 2-3 dias (amarela), depois em dia (verde) — o treinador abre a
+  tela e já vê quem precisa de atenção, sem entrar atleta por atleta. Um
+  resumo no topo da seção soma quantos estão vinculados e quantos estão
+  "sem check-in há dias".
+- **Planner** — a visão unificada de "treino + nutrição + recuperação" que
+  faltava no MVP do documento de visão. Mesma tira de 7 dias dos outros
+  módulos; ao escolher um dia, três cards lado a lado: **Treino** (dia,
+  exercícios planejados, concluir/desmarcar), **Nutrição** (água e
+  calorias do dia, com os mesmos botões de "+água" rápidos) e
+  **Recuperação** (sono/HRV/FC/peso daquele dia, mais o Maverick Score
+  *como ele era naquele dia* — calculado com o histórico só até ali, não
+  com o histórico completo). O Planner é deliberadamente um **resumo**, não
+  uma reimplementação: pra editar exercício, macro detalhado ou registrar
+  sono, cada card linka pro módulo de verdade — evita duplicar lógica de
+  formulário em três lugares. Só a semana atual por enquanto (sem navegar
+  pra semanas passadas/futuras).
+
+## Próximos passos sugeridos
+
+Ordem combinada depois da análise de plataforma (documento de visão do
+Performance OS comparado com o estado real do app):
+
+1. **Offline Fase 2** (escrita): registrar treino/sono/refeição offline com
+   fila de sincronização automática — a Fase 1 (só leitura, Treinos e
+   Health) já está em produção, ver "Offline" abaixo.
+2. **Offline nos demais módulos**: Vision, Nutrition, Coach e Hábitos ainda
+   exigem conexão pra tudo — extensão natural do mesmo `loadWithCache`.
+3. **Garmin Connect**: aguardando aprovação do Garmin Developer Program —
+   assim que sair, entra no mesmo padrão do Strava (Edge Function própria,
+   grava em `health_entries`/tabela de atividades).
+4. **Apple HealthKit**: requer build nativo (não funciona no preview web).
+5. **Sincronização automática do Strava** (hoje é sob demanda, via botão
+   "Sincronizar" — dá pra rodar num cron/webhook do Strava depois).
+6. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
+7. **Notificações** de pedido de vínculo pendente no Coach (hoje só aparece
+   ao abrir a tela), e uma seção de Nutrition na tela do Coach.
+8. **Testes de componente/tela**: a Fase 1 de testes (`npm test`, ver "Testes
+   e CI") cobre só lógica pura em `src/lib/*`. Testar telas exigiria
+   `@testing-library/react-native`.
+9. **Testes das Edge Functions** (Deno): fora da suíte Jest, precisaria de
+   `deno test` numa esteira própria.
+10. **Repositório git + push pro GitHub**: o workflow de CI já existe
+    (`.github/workflows/ci.yml`) mas só roda de verdade quando o projeto
+    virar um repositório de fato.

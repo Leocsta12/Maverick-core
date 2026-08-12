@@ -1,0 +1,364 @@
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../src/context/AuthContext';
+import { colors, spacing, typography, radius } from '../../src/theme/tokens';
+import { TextField } from '../../src/components/TextField';
+import { Button } from '../../src/components/Button';
+import { showAlert } from '../../src/lib/alert';
+import { OfflineBanner } from '../../src/components/OfflineBanner';
+import { loadWithCache } from '../../src/lib/offlineCache';
+import {
+  HealthEntry,
+  computeMaverickScore,
+  deriveInsight,
+  listHealthEntries,
+  todayIsoDate,
+  upsertHealthEntry,
+} from '../../src/lib/health';
+import {
+  StravaActivity,
+  StravaStatus,
+  activityTypeLabel,
+  connectStrava,
+  disconnectStrava,
+  formatDistance,
+  formatDuration,
+  getStravaStatus,
+  isStravaConfigured,
+  listStravaActivities,
+  syncStravaActivities,
+} from '../../src/lib/strava';
+
+function formatEntryDate(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+export default function Health() {
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  const [entries, setEntries] = useState<HealthEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [sleepHours, setSleepHours] = useState('');
+  const [hrvMs, setHrvMs] = useState('');
+  const [restingHr, setRestingHr] = useState('');
+  const [steps, setSteps] = useState('');
+  const [weightKg, setWeightKg] = useState('');
+  const [bodyFatPct, setBodyFatPct] = useState('');
+  const [offlineSince, setOfflineSince] = useState<string | null>(null);
+
+  const loadEntries = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const result = await loadWithCache(`health:${user.id}`, () => listHealthEntries(user.id));
+      const data = result.data;
+      setEntries(data);
+      setOfflineSince(result.isFromCache ? result.cachedAt : null);
+      const today = data.find((e) => e.entryDate === todayIsoDate());
+      if (today) {
+        setSleepHours(today.sleepHours?.toString() ?? '');
+        setHrvMs(today.hrvMs?.toString() ?? '');
+        setRestingHr(today.restingHr?.toString() ?? '');
+        setSteps(today.steps?.toString() ?? '');
+        setWeightKg(today.weightKg?.toString() ?? '');
+        setBodyFatPct(today.bodyFatPct?.toString() ?? '');
+      }
+    } catch {
+      showAlert('Não foi possível carregar seus dados de Health.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadEntries();
+  }, [loadEntries]);
+
+  const handleSave = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      await upsertHealthEntry(user.id, {
+        entryDate: todayIsoDate(),
+        sleepHours: sleepHours ? Number(sleepHours.replace(',', '.')) : null,
+        hrvMs: hrvMs ? Number(hrvMs) : null,
+        restingHr: restingHr ? Number(restingHr) : null,
+        steps: steps ? Number(steps) : null,
+        weightKg: weightKg ? Number(weightKg.replace(',', '.')) : null,
+        bodyFatPct: bodyFatPct ? Number(bodyFatPct.replace(',', '.')) : null,
+      });
+      await loadEntries();
+      showAlert('Registro de hoje salvo.');
+    } catch {
+      showAlert('Não foi possível salvar. Tente de novo.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const score = computeMaverickScore(entries);
+  const insight = deriveInsight(score);
+  const history = entries.filter((e) => e.entryDate !== todayIsoDate());
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{
+        paddingTop: insets.top + spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.xxl,
+      }}
+    >
+      <Text style={styles.eyebrow}>HEALTH</Text>
+      <Text style={styles.title}>Seus sinais de hoje</Text>
+
+      <OfflineBanner cachedAt={offlineSince} />
+
+      <View style={styles.scoreCard}>
+        <Text style={styles.scoreValue}>{score ?? '—'}</Text>
+        <Text style={styles.scoreLabel}>MAVERICK SCORE</Text>
+        <Text style={styles.insightText}>{insight}</Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>Registrar hoje</Text>
+      <TextField
+        label="Sono (horas)"
+        value={sleepHours}
+        onChangeText={setSleepHours}
+        keyboardType="decimal-pad"
+        placeholder="7.5"
+      />
+      <TextField
+        label="HRV (ms)"
+        value={hrvMs}
+        onChangeText={setHrvMs}
+        keyboardType="number-pad"
+        placeholder="52"
+      />
+      <TextField
+        label="FC de repouso (bpm)"
+        value={restingHr}
+        onChangeText={setRestingHr}
+        keyboardType="number-pad"
+        placeholder="58"
+      />
+      <TextField
+        label="Passos"
+        value={steps}
+        onChangeText={setSteps}
+        keyboardType="number-pad"
+        placeholder="8000"
+      />
+      <TextField
+        label="Peso (kg)"
+        value={weightKg}
+        onChangeText={setWeightKg}
+        keyboardType="decimal-pad"
+        placeholder="78.5"
+      />
+      <TextField
+        label="% de gordura (opcional)"
+        value={bodyFatPct}
+        onChangeText={setBodyFatPct}
+        keyboardType="decimal-pad"
+        placeholder="18.0"
+      />
+      <Button label="Salvar registro de hoje" onPress={handleSave} loading={isSaving} />
+
+      <Text style={styles.sectionTitle}>Histórico</Text>
+      {isLoading ? (
+        <Text style={styles.emptyText}>Carregando…</Text>
+      ) : history.length === 0 ? (
+        <Text style={styles.emptyText}>Sem registros anteriores ainda.</Text>
+      ) : (
+        history.map((entry) => (
+          <View key={entry.id} style={styles.historyRow}>
+            <Text style={styles.historyDate}>{formatEntryDate(entry.entryDate)}</Text>
+            <Text style={styles.historyValues}>
+              {entry.sleepHours != null ? `${entry.sleepHours}h sono` : '—'} ·{' '}
+              {entry.hrvMs != null ? `HRV ${entry.hrvMs}ms` : '—'} ·{' '}
+              {entry.restingHr != null ? `FC ${entry.restingHr}bpm` : '—'} ·{' '}
+              {entry.steps != null ? `${entry.steps} passos` : '—'}
+              {entry.weightKg != null ? ` · ${entry.weightKg}kg` : ''}
+              {entry.bodyFatPct != null ? ` · ${entry.bodyFatPct}% gordura` : ''}
+            </Text>
+          </View>
+        ))
+      )}
+
+      {user ? <StravaSection userId={user.id} /> : null}
+
+      <Text style={styles.footnote}>
+        Integração automática com Garmin e Apple Health entra numa fase seguinte, escrevendo nesta
+        mesma base — o registro manual continua funcionando como alternativa.
+      </Text>
+    </ScrollView>
+  );
+}
+
+function StravaSection({ userId }: { userId: string }) {
+  const [status, setStatus] = useState<StravaStatus>({ connected: false });
+  const [activities, setActivities] = useState<StravaActivity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const s = await getStravaStatus();
+      setStatus(s);
+      setActivities(s.connected ? await listStravaActivities(userId) : []);
+    } catch {
+      // Silencioso — não deve travar o resto da tela de Health por causa disso.
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (!isStravaConfigured()) return null;
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    try {
+      await connectStrava();
+      showAlert('Autorize o acesso na aba que abriu. Depois volte aqui e toque em "Sincronizar".');
+    } catch {
+      showAlert('Não foi possível abrir a autorização do Strava.');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await syncStravaActivities();
+      await load();
+      showAlert(`${result.synced} atividade(s) sincronizada(s).`);
+    } catch {
+      showAlert('Não foi possível sincronizar agora. Confira se já autorizou o acesso.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    showAlert('Desconectar Strava?', 'As atividades já sincronizadas continuam salvas no seu histórico.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Desconectar',
+        style: 'destructive',
+        onPress: async () => {
+          await disconnectStrava(userId);
+          await load();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <>
+      <Text style={styles.sectionTitle}>Atividades (Strava)</Text>
+      {isLoading ? (
+        <Text style={styles.emptyText}>Carregando…</Text>
+      ) : !status.connected ? (
+        <>
+          <Text style={styles.emptyText}>
+            Conecte sua conta do Strava para trazer corridas, pedais e caminhadas pro seu histórico.
+          </Text>
+          <Button label="Conectar com Strava" onPress={handleConnect} loading={isConnecting} style={{ marginTop: spacing.sm }} />
+        </>
+      ) : (
+        <>
+          <View style={styles.stravaHeaderRow}>
+            <Text style={styles.stravaConnectedText}>Conectado ✓</Text>
+            <Button label="Sincronizar" variant="ghost" onPress={handleSync} loading={isSyncing} style={styles.syncButton} />
+          </View>
+          {activities.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhuma atividade sincronizada ainda — toque em "Sincronizar".</Text>
+          ) : (
+            activities.map((a) => (
+              <View key={a.id} style={styles.historyRow}>
+                <Text style={styles.historyDate}>
+                  {activityTypeLabel(a.type)} · {new Date(a.startedAt).toLocaleDateString('pt-BR')}
+                </Text>
+                <Text style={styles.historyValues}>
+                  {formatDistance(a.distanceMeters)} · {formatDuration(a.movingTimeSeconds)}
+                  {a.calories != null ? ` · ${Math.round(a.calories)} kcal` : ''}
+                </Text>
+              </View>
+            ))
+          )}
+          <Button label="Desconectar" variant="ghost" onPress={handleDisconnect} style={{ marginTop: spacing.md }} />
+        </>
+      )}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  eyebrow: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, letterSpacing: 2 },
+  title: { fontFamily: typography.display, fontSize: 24, color: colors.textPrimary, marginTop: 4, marginBottom: spacing.lg },
+  scoreCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  scoreValue: { fontFamily: typography.display, fontSize: 48, color: colors.textPrimary },
+  scoreLabel: { fontFamily: typography.mono, fontSize: 11, color: colors.steel, letterSpacing: 2, marginTop: 2 },
+  insightText: {
+    fontFamily: typography.body,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginTop: spacing.md,
+  },
+  sectionTitle: {
+    fontFamily: typography.bodySemiBold,
+    fontSize: 15,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  emptyText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted },
+  historyRow: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.sm,
+  },
+  historyDate: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, letterSpacing: 1, marginBottom: 4 },
+  historyValues: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted },
+  stravaHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  stravaConnectedText: { fontFamily: typography.bodySemiBold, fontSize: 13, color: colors.success },
+  syncButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  footnote: {
+    fontFamily: typography.body,
+    fontSize: 11,
+    color: colors.steel,
+    lineHeight: 16,
+    marginTop: spacing.xl,
+  },
+});

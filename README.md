@@ -143,7 +143,8 @@ src/
   lib/
     supabase.ts               # client do Supabase
     storage.ts                 # wrapper sobre AsyncStorage
-    offlineCache.ts             # cache local "read-through" (Offline Fase 1 — só leitura)
+    offlineCache.ts             # cache local "read-through" (Offline Fase 1 — leitura)
+    offlineSync.ts               # fila de escrita persistida (Offline Fase 2 — escrita)
     alert.tsx                  # showAlert + <AlertHost/> — substitui Alert.alert (no-op no web)
     health.ts                  # dados + cálculo do Maverick Score
     missionControl.ts           # compõe o Daily Brief do Painel (Score + treino + nutrição de hoje)
@@ -183,25 +184,46 @@ tela segue navegável), só mudou onde o atalho mora. O módulo de hábitos
 "Mission" colidia com "Mission Control", como a tela inicial é chamada na
 visão de produto (ver análise de plataforma).
 
-## Offline (Fase 1 — só leitura)
+## Offline
 
-**Treinos** e **Health** funcionam sem internet pra leitura — são os dois
-módulos onde faz mais sentido abrir sem sinal (academia, corrida). Padrão
-"cache read-through" em [`src/lib/offlineCache.ts`](src/lib/offlineCache.ts):
-`loadWithCache(chave, fetcher)` tenta buscar do Supabase e, se der certo,
-salva no `AsyncStorage` pra próxima vez; se a busca falhar (sem sinal, ou
-qualquer erro de rede) e existir algo salvo antes, devolve o cache em vez de
-quebrar a tela — e mostra o aviso `<OfflineBanner/>` com o horário do último
-dado salvo. **Escrita continua exigindo conexão** — registrar treino/sono
-offline com fila de sincronização automática é fase 2, não esta. Os outros
-módulos (Vision, Nutrition, Coach, Hábitos) ainda exigem conexão pra tudo.
+**Treinos** e **Health** funcionam sem internet — são os dois módulos onde
+faz mais sentido abrir sem sinal (academia, corrida). Os outros módulos
+(Vision, Nutrition, Coach, Hábitos) ainda exigem conexão pra tudo.
+
+**Fase 1 (leitura)** — padrão "cache read-through" em
+[`src/lib/offlineCache.ts`](src/lib/offlineCache.ts): `loadWithCache(chave,
+fetcher)` tenta buscar do Supabase e, se der certo, salva no `AsyncStorage`
+pra próxima vez; se a busca falhar (sem sinal, ou qualquer erro de rede) e
+existir algo salvo antes, devolve o cache em vez de quebrar a tela — e
+mostra o aviso `<OfflineBanner/>` com o horário do último dado salvo.
+
+**Fase 2 (escrita)** — [`src/lib/offlineSync.ts`](src/lib/offlineSync.ts):
+fila persistida no `AsyncStorage`. Quando uma escrita falha por falta de
+conexão, em vez de mostrar erro, a intenção fica guardada
+(`upsertHealthEntryOffline`, `markDayDoneOffline`, `markDayUndoneOffline`)
+e a tela atualiza o próprio estado local na hora (otimista — "salvo no
+aparelho, sincroniza sozinho depois"). A fila sai sozinha
+(`flushOfflineQueue`) em três momentos: ao abrir o app com sessão ativa
+(`OfflineSyncOnStart` em `app/_layout.tsx`), e depois de qualquer
+carregamento de Health/Treinos que confirme que a rede voltou. Escritas
+repetidas pro mesmo alvo (ex: marcar e desmarcar o mesmo dia offline, ou
+registrar o mesmo dia duas vezes) substituem a pendência anterior em vez de
+empilhar — só o estado final desejado importa, não o histórico de eventos.
+Mesmo escopo da Fase 1: só Health (registrar hoje) e Treinos (marcar/
+desmarcar o dia) — fluxos que dependem de resposta da rede pra fazer
+sentido (gerar treino por IA, analisar fotos) não são enfileiráveis.
 
 Testado simulando perda de rede de verdade (bloqueando as chamadas
 `/rest/v1/` do Supabase no navegador, mantendo `/auth/v1/` liberado pra não
 travar o login): com o cache já populado, Treinos e Health continuaram
 mostrando os dados certos com o aviso de offline; sem cache pra aquele dado
 específico (ex: um dia do plano nunca aberto antes), o app mostra um erro
-amigável em vez de travar.
+amigável em vez de travar; registrar um dia novo de Health e marcar um
+treino como concluído **offline** atualizaram a tela na hora (com o aviso
+de "N alterações aguardando conexão"), e ao restaurar a rede e recarregar,
+a fila sumiu sozinha — confirmado direto no banco que os dois chegaram
+(`health_entries` e `workout_logs`) com os valores exatos registrados
+offline.
 
 ## Nota técnica: Alert no web
 
@@ -228,7 +250,7 @@ offline. **Fase 2** — testes de componente e de tela com
 componentes isolados, e a tela de **Perfil** inteira (`app/(app)/profile.tsx`)
 como prova de que dá pra testar uma tela real — render, edição de campo,
 salvar, sair — só mockando `useAuth` (nenhuma chamada de rede de verdade).
-65 testes, 12 suítes.
+76 testes, 13 suítes (JS/RN — ver também "Edge Functions (Deno)" abaixo).
 
 > **`@testing-library/react-native` 14 não funciona neste projeto ainda**: a
 > v14 trocou o motor de teste de `react-test-renderer` (que já usamos, via
@@ -440,20 +462,19 @@ com marcações, não uma barra de progresso genérica.
 Ordem combinada depois da análise de plataforma (documento de visão do
 Performance OS comparado com o estado real do app):
 
-1. **Offline Fase 2** (escrita): registrar treino/sono/refeição offline com
-   fila de sincronização automática — a Fase 1 (só leitura, Treinos e
-   Health) já está em produção, ver "Offline" abaixo.
-2. **Offline nos demais módulos**: Vision, Nutrition, Coach e Hábitos ainda
-   exigem conexão pra tudo — extensão natural do mesmo `loadWithCache`.
-3. **Garmin Connect**: aguardando aprovação do Garmin Developer Program —
+1. **Offline nos demais módulos**: Vision, Nutrition, Coach e Hábitos ainda
+   exigem conexão pra tudo — extensão natural do mesmo `loadWithCache` (Fase
+   1) / `offlineSync.ts` (Fase 2, pra Nutrition — registrar refeição/água
+   offline seria o próximo candidato natural, mesmo padrão de Health).
+2. **Garmin Connect**: aguardando aprovação do Garmin Developer Program —
    assim que sair, entra no mesmo padrão do Strava (Edge Function própria,
    grava em `health_entries`/tabela de atividades).
-4. **Apple HealthKit**: requer build nativo (não funciona no preview web).
-5. **Sincronização automática do Strava** (hoje é sob demanda, via botão
+3. **Apple HealthKit**: requer build nativo (não funciona no preview web).
+4. **Sincronização automática do Strava** (hoje é sob demanda, via botão
    "Sincronizar" — dá pra rodar num cron/webhook do Strava depois).
-6. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
-7. **Notificações** de pedido de vínculo pendente no Coach (hoje só aparece
+5. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
+6. **Notificações** de pedido de vínculo pendente no Coach (hoje só aparece
    ao abrir a tela), e uma seção de Nutrition na tela do Coach.
-8. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
+7. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
    até agora (ver "Testes e CI") — as próximas telas a valer a pena testar
    são as com mais lógica de interação (Hábitos, Nutrition).

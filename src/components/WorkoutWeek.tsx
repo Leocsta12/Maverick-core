@@ -9,6 +9,7 @@ import { Button } from './Button';
 import { showAlert } from '../lib/alert';
 import { OfflineBanner } from './OfflineBanner';
 import { loadWithCache } from '../lib/offlineCache';
+import { flushOfflineQueue, markDayDoneOffline, markDayUndoneOffline, queuedWriteCount } from '../lib/offlineSync';
 import {
   AthleteLevel,
   Exercise,
@@ -27,8 +28,6 @@ import {
   listLogSets,
   listPlanDays,
   listRecentLogs,
-  markDayDone,
-  markDayUndone,
   removeExerciseFromDay,
   saveLogSets,
   setExerciseVideoUrl,
@@ -67,6 +66,7 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDay, setIsLoadingDay] = useState(false);
   const [offlineSince, setOfflineSince] = useState<string | null>(null);
+  const [pendingWrites, setPendingWrites] = useState(0);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -79,11 +79,20 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
       });
       setPlan(result.data.plan);
       setDays(result.data.days);
-      setLogs(result.data.logs);
+      let logs = result.data.logs;
       setOfflineSince(result.isFromCache ? result.cachedAt : null);
       setSelectedDayId(
         (prev) => prev ?? result.data.days.find((d) => d.dayOfWeek === todayDayOfWeek())?.id ?? result.data.days[0]?.id ?? null
       );
+
+      // Veio da rede de verdade — tenta despachar qualquer marcação de
+      // treino que ficou pendente de quando estava offline.
+      if (!result.isFromCache) {
+        const { synced } = await flushOfflineQueue();
+        if (synced > 0) logs = await listRecentLogs(athleteUserId);
+      }
+      setLogs(logs);
+      setPendingWrites(await queuedWriteCount());
     } catch {
       showAlert('Não foi possível carregar o plano de treino.');
     } finally {
@@ -124,9 +133,24 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
     if (!user || !selectedDay || !selectedDate) return;
     try {
       if (selectedLog) {
-        await markDayUndone(selectedDay.id, selectedDate);
+        const result = await markDayUndoneOffline(selectedDay.id, selectedDate);
+        if (result.queued) {
+          setLogs((prev) => prev.filter((l) => !(l.planDayId === selectedDay.id && l.logDate === selectedDate)));
+          setPendingWrites(await queuedWriteCount());
+          showAlert('Sem conexão agora — salvo no aparelho. Sincroniza sozinho assim que a internet voltar.');
+          return;
+        }
       } else {
-        await markDayDone(user.id, selectedDay.id, selectedDate);
+        const result = await markDayDoneOffline(user.id, selectedDay.id, selectedDate);
+        if (result.queued) {
+          setLogs((prev) => [
+            ...prev,
+            { id: `pending-${selectedDay.id}-${selectedDate}`, planDayId: selectedDay.id, logDate: selectedDate, completed: true },
+          ]);
+          setPendingWrites(await queuedWriteCount());
+          showAlert('Sem conexão agora — salvo no aparelho. Sincroniza sozinho assim que a internet voltar.');
+          return;
+        }
       }
       await refreshLogs();
     } catch {
@@ -141,6 +165,11 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
   return (
     <View>
       <OfflineBanner cachedAt={offlineSince} />
+      {pendingWrites > 0 && (
+        <Text style={styles.pendingNote}>
+          {pendingWrites} {pendingWrites === 1 ? 'alteração' : 'alterações'} aguardando conexão pra sincronizar.
+        </Text>
+      )}
 
       {canEditPlan && (
         <AIPlanGenerator
@@ -726,6 +755,7 @@ const styles = StyleSheet.create({
   restToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.md },
   restToggleText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted, marginLeft: 6 },
   emptyText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted, lineHeight: 19 },
+  pendingNote: { fontFamily: typography.body, fontSize: 11, color: colors.warning, marginBottom: spacing.md },
   exerciseCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,

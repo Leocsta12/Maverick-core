@@ -8,14 +8,8 @@ import { Button } from '../../src/components/Button';
 import { showAlert } from '../../src/lib/alert';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { loadWithCache } from '../../src/lib/offlineCache';
-import {
-  HealthEntry,
-  computeMaverickScore,
-  deriveInsight,
-  listHealthEntries,
-  todayIsoDate,
-  upsertHealthEntry,
-} from '../../src/lib/health';
+import { flushOfflineQueue, queuedWriteCount, upsertHealthEntryOffline } from '../../src/lib/offlineSync';
+import { HealthEntry, computeMaverickScore, deriveInsight, listHealthEntries, todayIsoDate } from '../../src/lib/health';
 import {
   StravaActivity,
   StravaStatus,
@@ -50,6 +44,7 @@ export default function Health() {
   const [weightKg, setWeightKg] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState('');
   const [offlineSince, setOfflineSince] = useState<string | null>(null);
+  const [pendingWrites, setPendingWrites] = useState(0);
 
   const loadEntries = useCallback(async () => {
     if (!user) return;
@@ -68,6 +63,18 @@ export default function Health() {
         setWeightKg(today.weightKg?.toString() ?? '');
         setBodyFatPct(today.bodyFatPct?.toString() ?? '');
       }
+
+      // Se essa busca veio da rede de verdade (não do cache), é sinal de
+      // que temos conexão — aproveita pra tentar despachar qualquer
+      // registro que ficou pendente de quando estava offline.
+      if (!result.isFromCache) {
+        const { synced } = await flushOfflineQueue();
+        if (synced > 0) {
+          const refreshed = await loadWithCache(`health:${user.id}`, () => listHealthEntries(user.id));
+          setEntries(refreshed.data);
+        }
+      }
+      setPendingWrites(await queuedWriteCount());
     } catch {
       showAlert('Não foi possível carregar seus dados de Health.');
     } finally {
@@ -83,17 +90,40 @@ export default function Health() {
     if (!user) return;
     setIsSaving(true);
     try {
-      await upsertHealthEntry(user.id, {
-        entryDate: todayIsoDate(),
+      const entryDate = todayIsoDate();
+      const entry = {
+        entryDate,
         sleepHours: sleepHours ? Number(sleepHours.replace(',', '.')) : null,
         hrvMs: hrvMs ? Number(hrvMs) : null,
         restingHr: restingHr ? Number(restingHr) : null,
         steps: steps ? Number(steps) : null,
         weightKg: weightKg ? Number(weightKg.replace(',', '.')) : null,
         bodyFatPct: bodyFatPct ? Number(bodyFatPct.replace(',', '.')) : null,
-      });
-      await loadEntries();
-      showAlert('Registro de hoje salvo.');
+      };
+      const result = await upsertHealthEntryOffline(user.id, entry);
+      if (result.queued) {
+        // Sem conexão: não dá pra recarregar do servidor, então atualiza
+        // o estado local direto — é assim que o registro "aparece salvo"
+        // na hora, mesmo esperando a rede voltar pra sincronizar de verdade.
+        setEntries((prev) => [
+          ...prev.filter((e) => e.entryDate !== entryDate),
+          {
+            id: `pending-${entryDate}`,
+            entryDate,
+            sleepHours: entry.sleepHours,
+            hrvMs: entry.hrvMs,
+            restingHr: entry.restingHr,
+            steps: entry.steps,
+            weightKg: entry.weightKg,
+            bodyFatPct: entry.bodyFatPct,
+          },
+        ]);
+        setPendingWrites(await queuedWriteCount());
+        showAlert('Sem conexão agora — salvo no aparelho. Sincroniza sozinho assim que a internet voltar.');
+      } else {
+        await loadEntries();
+        showAlert('Registro de hoje salvo.');
+      }
     } catch {
       showAlert('Não foi possível salvar. Tente de novo.');
     } finally {
@@ -118,6 +148,11 @@ export default function Health() {
       <Text style={styles.title}>Seus sinais de hoje</Text>
 
       <OfflineBanner cachedAt={offlineSince} />
+      {pendingWrites > 0 && (
+        <Text style={styles.pendingNote}>
+          {pendingWrites} registro{pendingWrites === 1 ? '' : 's'} aguardando conexão pra sincronizar.
+        </Text>
+      )}
 
       <View style={styles.scoreCard}>
         <Text style={styles.scoreValue}>{score ?? '—'}</Text>
@@ -336,6 +371,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   emptyText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted },
+  pendingNote: {
+    fontFamily: typography.body,
+    fontSize: 11,
+    color: colors.warning,
+    marginBottom: spacing.md,
+  },
   historyRow: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,

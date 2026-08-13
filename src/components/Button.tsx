@@ -8,12 +8,14 @@ type Props = {
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  testID?: string;
 };
 
-export function Button({ label, onPress, variant = 'primary', loading, disabled, style }: Props) {
+export function Button({ label, onPress, variant = 'primary', loading, disabled, style, testID }: Props) {
   const isPrimary = variant === 'primary';
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [

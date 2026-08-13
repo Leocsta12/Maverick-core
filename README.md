@@ -135,6 +135,9 @@ app/
     mais.tsx                   # menu com Planner / Hábitos / Vision / Coach / Perfil / Sair
 src/
   components/                # Button, TextField, MaverickScoreRing, ModuleCard, WorkoutWeek, TrendChart, OfflineBanner
+    __tests__/                 # testes de componente (Fase 2 — ver "Testes e CI")
+  __tests__/screens/          # testes de tela (fora de app/ de propósito — expo-router
+                               # escaneia app/ pra rotas, um __tests__ lá dentro confundiria)
   context/AuthContext.tsx     # autenticação via Supabase Auth
   theme/tokens.ts             # cores, tipografia, espaçamento — a identidade visual
   lib/
@@ -211,11 +214,32 @@ nativo de sempre. Todo o app já usa `showAlert` no lugar de `Alert.alert`.
 ## Testes e CI
 
 `jest` + `jest-expo` (o preset oficial da Expo, já traz os mocks de módulo
-nativo prontos). Fase 1: só testes de unidade sobre lógica pura em
-`src/lib/*.ts` — cálculo do Maverick Score, streak de hábitos, totais de
+nativo prontos). **Fase 1** — testes de unidade sobre lógica pura em
+`src/lib/*.ts`: cálculo do Maverick Score, streak de hábitos, totais de
 nutrição, status de check-in do Coach, composição do Daily Brief e o cache
-offline. Sem testes de componente/tela ainda (exigiriam
-`@testing-library/react-native`, é o próximo passo natural).
+offline. **Fase 2** — testes de componente e de tela com
+`@testing-library/react-native` (`^13`, não a `14` — ver nota abaixo):
+`Button`, `TextField`, `ModuleCard`, `OfflineBanner` e `TrendChart` como
+componentes isolados, e a tela de **Perfil** inteira (`app/(app)/profile.tsx`)
+como prova de que dá pra testar uma tela real — render, edição de campo,
+salvar, sair — só mockando `useAuth` (nenhuma chamada de rede de verdade).
+65 testes, 12 suítes.
+
+> **`@testing-library/react-native` 14 não funciona neste projeto ainda**: a
+> v14 trocou o motor de teste de `react-test-renderer` (que já usamos, via
+> `jest-expo`) pro pacote novo `test-renderer`, feito pra New Architecture —
+> e não achei esse pacote publicado de forma compatível com o que o Expo SDK
+> 57 já traz. Fica em `^13.3.3`, que ainda usa `react-test-renderer` (mesmo
+> motor do resto do setup) até isso amadurecer.
+>
+> **Pegadinha real #2**: `fireEvent.press` da RTL sobe a árvore de teste
+> procurando uma prop `onPress` em QUALQUER ancestral — inclusive no próprio
+> componente React (não só no `Pressable` real), então simular um toque não
+> prova que um botão "bloqueado" internamente decidiu não usar o `onPress`
+> que recebeu. E `getByTestId` resolve pro elemento nativo (host), que não
+> tem uma prop `disabled` — isso vira `accessibilityState.disabled`. As duas
+> coisas só apareceram rodando de verdade; os testes de `Button`/`ModuleCard`
+> documentam a solução (ver comentários nos arquivos).
 
 ```bash
 npm test              # roda tudo uma vez
@@ -388,8 +412,8 @@ Performance OS comparado com o estado real do app):
 6. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
 7. **Notificações** de pedido de vínculo pendente no Coach (hoje só aparece
    ao abrir a tela), e uma seção de Nutrition na tela do Coach.
-8. **Testes de componente/tela**: a Fase 1 de testes (`npm test`, ver "Testes
-   e CI") cobre só lógica pura em `src/lib/*`. Testar telas exigiria
-   `@testing-library/react-native`.
+8. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
+   até agora (ver "Testes e CI") — as próximas telas a valer a pena testar
+   são as com mais lógica de interação (Hábitos, Nutrition).
 9. **Testes das Edge Functions** (Deno): fora da suíte Jest, precisaria de
    `deno test` numa esteira própria.

@@ -8,11 +8,13 @@ type Props = {
   subtitle: string;
   locked?: boolean;
   onPress?: () => void;
+  testID?: string;
 };
 
-export function ModuleCard({ icon, title, subtitle, locked, onPress }: Props) {
+export function ModuleCard({ icon, title, subtitle, locked, onPress, testID }: Props) {
   return (
     <Pressable
+      testID={testID}
       onPress={locked ? undefined : onPress}
       style={({ pressed }) => [styles.card, locked && styles.cardLocked, pressed && !locked && { opacity: 0.85 }]}
     >

@@ -14,3 +14,12 @@ process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANO
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
+
+// Idem pro SafeAreaContext — mock oficial do pacote, devolve insets zerados
+// sem precisar envolver cada tela testada num <SafeAreaProvider>. O arquivo
+// do mock só tem `export default {...}`; sem desembrulhar o `.default` aqui,
+// o import nomeado `{ useSafeAreaInsets }` que as telas usam viria undefined.
+jest.mock('react-native-safe-area-context', () => {
+  const mock = require('react-native-safe-area-context/jest/mock');
+  return mock.default ?? mock;
+});

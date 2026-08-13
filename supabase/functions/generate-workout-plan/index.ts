@@ -20,7 +20,11 @@ const CORS_HEADERS = {
 };
 
 const LEVELS = ['iniciante', 'intermediario', 'avancado'] as const;
-type Level = (typeof LEVELS)[number];
+export type Level = (typeof LEVELS)[number];
+
+export function isValidLevel(level: unknown): level is Level {
+  return typeof level === 'string' && (LEVELS as readonly string[]).includes(level);
+}
 
 const LEVEL_GUIDANCE: Record<Level, string> = {
   iniciante:
@@ -111,7 +115,40 @@ const PLAN_TOOL = {
   },
 };
 
-Deno.serve(async (req) => {
+// Extraídas do handler pra dar pra testar sem chamar a Claude API de
+// verdade — são elas que decidem o que a IA vai ler, então valem o teste.
+export function buildCatalogText(catalog: { name: string; muscleGroup: string | null }[]): string {
+  return catalog.length > 0
+    ? catalog.map((e) => `- ${e.name}${e.muscleGroup ? ` (${e.muscleGroup})` : ''}`).join('\n')
+    : '(catálogo vazio — pode propor exercícios livremente)';
+}
+
+export function buildUserMessage(fields: {
+  level: Level;
+  goal?: string;
+  daysPerWeek: number;
+  equipmentNotes?: string;
+  catalog: { name: string; muscleGroup: string | null }[];
+}): string {
+  const { level, goal, daysPerWeek, equipmentNotes, catalog } = fields;
+  const catalogText = buildCatalogText(catalog);
+
+  return `
+Nível do atleta: ${level}
+${LEVEL_GUIDANCE[level]}
+
+Dias de treino por semana: ${daysPerWeek} (os outros ${7 - daysPerWeek} dias da semana devem ser descanso)
+${goal ? `Objetivo: ${goal}` : 'Objetivo: não informado — monte um plano equilibrado de condicionamento geral.'}
+${equipmentNotes ? `Equipamento disponível: ${equipmentNotes}` : 'Equipamento disponível: não informado — assuma academia completa.'}
+
+Catálogo de exercícios já cadastrados (prefira reaproveitar esses nomes quando fizer sentido):
+${catalogText}
+
+Monte o plano semanal completo agora.
+`.trim();
+}
+
+export async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
   }
@@ -139,7 +176,7 @@ Deno.serve(async (req) => {
     const equipmentNotes: string | undefined = body.equipmentNotes?.trim() || undefined;
     const catalog: { name: string; muscleGroup: string | null }[] = Array.isArray(body.catalog) ? body.catalog : [];
 
-    if (!LEVELS.includes(level)) {
+    if (!isValidLevel(level)) {
       return json({ error: 'Nível inválido. Use iniciante, intermediario ou avancado.' }, 400);
     }
 
@@ -148,24 +185,7 @@ Deno.serve(async (req) => {
       return json({ error: 'ANTHROPIC_API_KEY não configurada no servidor.' }, 500);
     }
 
-    const catalogText =
-      catalog.length > 0
-        ? catalog.map((e) => `- ${e.name}${e.muscleGroup ? ` (${e.muscleGroup})` : ''}`).join('\n')
-        : '(catálogo vazio — pode propor exercícios livremente)';
-
-    const userMessage = `
-Nível do atleta: ${level}
-${LEVEL_GUIDANCE[level]}
-
-Dias de treino por semana: ${daysPerWeek} (os outros ${7 - daysPerWeek} dias da semana devem ser descanso)
-${goal ? `Objetivo: ${goal}` : 'Objetivo: não informado — monte um plano equilibrado de condicionamento geral.'}
-${equipmentNotes ? `Equipamento disponível: ${equipmentNotes}` : 'Equipamento disponível: não informado — assuma academia completa.'}
-
-Catálogo de exercícios já cadastrados (prefira reaproveitar esses nomes quando fizer sentido):
-${catalogText}
-
-Monte o plano semanal completo agora.
-`.trim();
+    const userMessage = buildUserMessage({ level, goal, daysPerWeek, equipmentNotes, catalog });
 
     const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -201,9 +221,13 @@ Monte o plano semanal completo agora.
     console.error(err);
     return json({ error: 'Erro inesperado ao gerar o plano de treino.' }, 500);
   }
-});
+}
 
-function json(body: unknown, status = 200): Response {
+if (import.meta.main) {
+  Deno.serve(handler);
+}
+
+export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS_HEADERS, 'content-type': 'application/json' },

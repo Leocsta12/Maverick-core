@@ -48,7 +48,7 @@ Regras importantes, sem exceção:
 - Responda em português, em 3 a 5 frases, direto ao ponto.
 `.trim();
 
-Deno.serve(async (req) => {
+export async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
   }
@@ -151,12 +151,27 @@ Deno.serve(async (req) => {
     console.error(err);
     return json({ error: 'Erro inesperado ao analisar as fotos.' }, 500);
   }
-});
+}
 
-async function toBase64(
-  supabase: ReturnType<typeof createClient>,
-  path: string
-): Promise<string> {
+if (import.meta.main) {
+  Deno.serve(handler);
+}
+
+// Tipo estrutural mínimo (não o StorageClient inteiro) — é só o que a
+// função usa de verdade, e é o que permite passar um objeto falso nos
+// testes sem precisar simular a classe completa do Supabase Storage.
+type StorageDownloader = {
+  storage: {
+    from: (bucket: string) => {
+      download: (path: string) => Promise<{
+        data: { arrayBuffer: () => Promise<ArrayBuffer> } | null;
+        error: Error | null;
+      }>;
+    };
+  };
+};
+
+export async function toBase64(supabase: StorageDownloader, path: string): Promise<string> {
   const { data, error } = await supabase.storage.from('vision-photos').download(path);
   if (error || !data) throw new Error(`Falha ao baixar imagem: ${path}`);
   const buf = await data.arrayBuffer();
@@ -166,7 +181,7 @@ async function toBase64(
   return btoa(binary);
 }
 
-function json(body: unknown, status = 200): Response {
+export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS_HEADERS, 'content-type': 'application/json' },

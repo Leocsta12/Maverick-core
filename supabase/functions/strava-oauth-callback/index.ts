@@ -14,7 +14,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-function htmlPage(title: string, message: string): Response {
+export function htmlPage(title: string, message: string): Response {
   return new Response(
     `<!doctype html>
 <html lang="pt-BR">
@@ -41,7 +41,9 @@ function htmlPage(title: string, message: string): Response {
   );
 }
 
-Deno.serve(async (req) => {
+// Exportado (em vez de passado direto pro Deno.serve) pra dar pra importar
+// em testes sem precisar de um servidor de verdade — ver __tests__/index.test.ts.
+export async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -112,4 +114,11 @@ Deno.serve(async (req) => {
   }
 
   return htmlPage('Strava conectado! 🎉', 'Pode fechar esta aba e voltar pro Maverick Performance — suas atividades já podem ser sincronizadas.');
-});
+}
+
+// Só sobe o servidor quando o arquivo roda como entrypoint de verdade (é
+// assim que o runtime da Supabase executa) — não quando um teste importa
+// esse módulo só pra pegar `handler`/`htmlPage`.
+if (import.meta.main) {
+  Deno.serve(handler);
+}

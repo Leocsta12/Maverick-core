@@ -27,3 +27,24 @@ jobs:
 
       - name: Testes
         run: npm test -- --ci
+
+  deno-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # --node-modules-dir=none: sem isso o Deno tenta resolver os pacotes
+      # npm transitivos do supabase-js contra o node_modules do projeto
+      # Expo (que está aqui do lado, no mesmo repo) e falha — os dois
+      # ecossistemas são independentes, ver README > Testes e CI.
+      - name: Testes das Edge Functions (Deno)
+        run: >
+          deno test --allow-net --allow-env --node-modules-dir=none
+          supabase/functions/strava-oauth-callback
+          supabase/functions/strava-sync
+          supabase/functions/generate-workout-plan
+          supabase/functions/analyze-vision

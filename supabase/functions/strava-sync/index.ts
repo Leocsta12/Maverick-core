@@ -14,11 +14,36 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function json(body: unknown, status = 200): Response {
+export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS_HEADERS, 'content-type': 'application/json' },
   });
+}
+
+// Margem de 5 min antes de expirar — extraído pra dar pra testar a
+// matemática do "precisa renovar?" sem precisar de um token do Strava de
+// verdade nem mockar o relógio do sistema (aceita `now` como parâmetro).
+export function needsTokenRefresh(expiresAtIso: string, now: number = Date.now()): boolean {
+  const expiresAt = new Date(expiresAtIso).getTime();
+  return expiresAt - now < 5 * 60 * 1000;
+}
+
+// Mapeamento de uma atividade do Strava pra uma linha de strava_activities —
+// extraído do .map() inline pra dar pra testar os fallbacks (tipo ausente,
+// campos numéricos ausentes) sem precisar chamar a API do Strava.
+export function toActivityRow(userId: string, a: Record<string, unknown>) {
+  return {
+    user_id: userId,
+    strava_activity_id: a.id,
+    activity_type: a.type ?? a.sport_type ?? 'Activity',
+    name: a.name ?? '',
+    distance_m: a.distance ?? null,
+    moving_time_s: a.moving_time ?? null,
+    calories: a.calories ?? null,
+    average_heartrate: a.average_heartrate ?? null,
+    started_at: a.start_date ?? new Date().toISOString(),
+  };
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<{
@@ -40,7 +65,7 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   return resp.json();
 }
 
-Deno.serve(async (req) => {
+export async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
 
   try {
@@ -74,8 +99,7 @@ Deno.serve(async (req) => {
 
     // Token do Strava expira em poucas horas — renova se estiver
     // vencido ou perto disso (margem de 5 min).
-    const expiresAt = new Date(connection.expires_at).getTime();
-    if (expiresAt - Date.now() < 5 * 60 * 1000) {
+    if (needsTokenRefresh(connection.expires_at)) {
       const refreshed = await refreshAccessToken(connection.refresh_token);
       accessToken = refreshed.access_token;
       await admin
@@ -104,17 +128,7 @@ Deno.serve(async (req) => {
 
     const activities = await activitiesResp.json();
 
-    const rows = (activities as Array<Record<string, unknown>>).map((a) => ({
-      user_id: userId,
-      strava_activity_id: a.id,
-      activity_type: a.type ?? a.sport_type ?? 'Activity',
-      name: a.name ?? '',
-      distance_m: a.distance ?? null,
-      moving_time_s: a.moving_time ?? null,
-      calories: a.calories ?? null,
-      average_heartrate: a.average_heartrate ?? null,
-      started_at: a.start_date ?? new Date().toISOString(),
-    }));
+    const rows = (activities as Array<Record<string, unknown>>).map((a) => toActivityRow(userId, a));
 
     if (rows.length > 0) {
       const { error: upsertError } = await admin
@@ -128,4 +142,8 @@ Deno.serve(async (req) => {
     console.error(err);
     return json({ error: 'Erro inesperado ao sincronizar com o Strava.' }, 500);
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve(handler);
+}

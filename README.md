@@ -156,14 +156,19 @@ src/
     workouts.ts                # plano semanal, catálogo de exercícios, registro de séries, geração por IA
 supabase/
   schema.sql                  # schema completo (tabelas, RLS, bucket de Storage)
-  functions/
+  functions/                  # cada uma exporta `handler` (+ helpers puros) e só
+                               # sobe Deno.serve se `import.meta.main` — ver "Testes e CI"
     analyze-vision/            # Edge Function que chama a Claude API (visão)
+      __tests__/index.test.ts    # Deno test — toBase64, json, ramos do handler sem I/O
     strava-oauth-callback/      # troca o code do Strava por tokens, salva a conexão
+      __tests__/index.test.ts    # Deno test — htmlPage, ramos do handler sem I/O
     strava-sync/                 # busca atividades recentes e grava em strava_activities
+      __tests__/index.test.ts    # Deno test — toActivityRow, needsTokenRefresh, ramos do handler
     generate-workout-plan/        # Edge Function que chama a Claude API (Maverick Coach IA)
+      __tests__/index.test.ts      # Deno test — buildUserMessage, isValidLevel, ramos do handler
 .github/
-  workflows/ci.yml               # typecheck + testes a cada push/PR pra main
-jest.config.js                   # preset jest-expo, setup, testMatch
+  workflows/ci.yml               # typecheck + testes JS a cada push/PR, + job separado de testes Deno
+jest.config.js                   # preset jest-expo, setup, testMatch (ignora supabase/functions/)
 jest.setup.js                    # env falso do Supabase + mock do AsyncStorage pros testes
 ```
 
@@ -264,10 +269,47 @@ por isso que dá pra rodar em CI sem segredo nenhum.
 > resquício. Corrigido declarando a dependência explicitamente — reproduzido
 > localmente clonando o repo do zero antes de confiar que o fix funcionava.
 
-As **Edge Functions** (`supabase/functions/*`, Deno) ficam de fora dessa
-suíte de propósito — é outro runtime, exigiria `deno test` numa esteira
-separada. Não entrou nessa rodada; fica como próximo passo se quiser
-cobertura ali também.
+### Edge Functions (Deno)
+
+As 4 Edge Functions (`supabase/functions/*`) têm sua própria suíte, em
+Deno — outro runtime, fora do Jest de propósito (`jest.config.js` ignora
+`/supabase/functions/` explicitamente pra nunca confundir os dois). 32
+testes, mesma filosofia da Fase 1 do Jest: lógica pura extraída do handler
+primeiro — `toActivityRow`/`needsTokenRefresh` (strava-sync),
+`buildUserMessage`/`isValidLevel` (generate-workout-plan), `htmlPage`
+(strava-oauth-callback), `toBase64` (analyze-vision) — mais os ramos do
+handler que retornam **antes** de precisar de Supabase/Claude/Strava de
+verdade (CORS, autenticação, validação de entrada). O que exige uma API
+externa de verdade (trocar código OAuth por token, chamar a Claude) fica
+de fora — não dá pra testar isso sem gastar chamada real.
+
+```bash
+# instala o Deno (uma vez): irm https://deno.land/install.ps1 | iex  (PowerShell/Windows)
+deno test --allow-net --allow-env --node-modules-dir=none \
+  supabase/functions/strava-oauth-callback \
+  supabase/functions/strava-sync \
+  supabase/functions/generate-workout-plan \
+  supabase/functions/analyze-vision
+```
+
+> **Pra isso funcionar, os 4 `index.ts` precisaram de um pequeno refactor**
+> (comportamento idêntico, só reorganização): cada um tinha um handler
+> anônimo direto em `Deno.serve(async (req) => {...})`, impossível de
+> importar num teste. Viraram `export async function handler(req)` +
+> `if (import.meta.main) { Deno.serve(handler); }` — só sobe o servidor
+> quando o arquivo roda como entrypoint de verdade (é assim que a Supabase
+> executa em produção), não quando um teste importa o módulo só pelas
+> funções exportadas. Redeployado e testado ao vivo depois do refactor —
+> nenhuma mudança de comportamento.
+>
+> **`--node-modules-dir=none` é obrigatório aqui**: o Deno detecta o
+> `package.json` do projeto Expo (que fica ao lado, no mesmo repo) e tenta
+> resolver os pacotes npm do `supabase-js` contra esse `node_modules` —
+> que não tem esses pacotes, porque são dois ecossistemas completamente
+> separados. Essa flag força o Deno a usar o cache dele próprio.
+
+CI: job separado (`deno-tests`, via `denoland/setup-deno`) roda em
+paralelo ao `typecheck-and-test` a cada push/PR.
 
 ## Identidade visual
 
@@ -415,5 +457,3 @@ Performance OS comparado com o estado real do app):
 8. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
    até agora (ver "Testes e CI") — as próximas telas a valer a pena testar
    são as com mais lógica de interação (Hábitos, Nutrition).
-9. **Testes das Edge Functions** (Deno): fora da suíte Jest, precisaria de
-   `deno test` numa esteira própria.

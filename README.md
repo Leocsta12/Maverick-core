@@ -229,9 +229,16 @@ definidos), e mocka `AsyncStorage` com o mock oficial do próprio pacote. É
 por isso que dá pra rodar em CI sem segredo nenhum.
 
 **CI** (`.github/workflows/ci.yml`): a cada push/PR pra `main`, roda
-`npm run lint` (typecheck) e `npm test`. Só ativa de verdade quando o
-projeto for empurrado pra um repositório no GitHub — hoje a pasta local
-ainda não é um repositório git.
+`npm run lint` (typecheck) e `npm test`. No ar em
+[github.com/Leocsta12/Maverick-core](https://github.com/Leocsta12/Maverick-core) — [primeiro run verde ✅](https://github.com/Leocsta12/Maverick-core/actions).
+
+> **Pegadinha real que aconteceu aqui**: o primeiro push falhou no CI — `jest-expo`
+> depende de `@react-native/jest-preset`, que por acaso já estava no
+> `node_modules` local (resquício de uma instalação anterior) mas nunca tinha
+> sido declarado no `package.json` nem travado no `package-lock.json`. Rodava
+> local, quebrava no CI, porque o CI faz `npm install` do zero, sem esse
+> resquício. Corrigido declarando a dependência explicitamente — reproduzido
+> localmente clonando o repo do zero antes de confiar que o fix funcionava.
 
 As **Edge Functions** (`supabase/functions/*`, Deno) ficam de fora dessa
 suíte de propósito — é outro runtime, exigiria `deno test` numa esteira
@@ -386,6 +393,3 @@ Performance OS comparado com o estado real do app):
    `@testing-library/react-native`.
 9. **Testes das Edge Functions** (Deno): fora da suíte Jest, precisaria de
    `deno test` numa esteira própria.
-10. **Repositório git + push pro GitHub**: o workflow de CI já existe
-    (`.github/workflows/ci.yml`) mas só roda de verdade quando o projeto
-    virar um repositório de fato.

@@ -286,10 +286,15 @@ nutrição, status de check-in do Coach, composição do Daily Brief e o cache
 offline. **Fase 2** — testes de componente e de tela com
 `@testing-library/react-native` (`^13`, não a `14` — ver nota abaixo):
 `Button`, `TextField`, `ModuleCard`, `OfflineBanner` e `TrendChart` como
-componentes isolados, e a tela de **Perfil** inteira (`app/(app)/profile.tsx`)
-como prova de que dá pra testar uma tela real — render, edição de campo,
-salvar, sair — só mockando `useAuth` (nenhuma chamada de rede de verdade).
-76 testes, 13 suítes (JS/RN — ver também "Edge Functions (Deno)" abaixo).
+componentes isolados, e três telas inteiras — **Perfil**
+(`app/(app)/profile.tsx`, só mocka `useAuth`), **Hábitos**
+(`app/(app)/mission.tsx`) e **Nutrition** (`app/(app)/nutrition.tsx`, essa
+mockando só `src/lib/nutrition.ts` e deixando `offlineCache`/`offlineSync`
+rodarem de verdade por cima — cobre a integração da tela com o offline,
+não só o caminho feliz) — como prova de que dá pra testar uma tela real:
+render, carregar, marcar/adicionar, e o que acontece quando a escrita
+falha. 101 testes, 15 suítes (JS/RN — ver também "Edge Functions (Deno)"
+abaixo).
 
 > **`@testing-library/react-native` 14 não funciona neste projeto ainda**: a
 > v14 trocou o motor de teste de `react-test-renderer` (que já usamos, via
@@ -332,23 +337,27 @@ por isso que dá pra rodar em CI sem segredo nenhum.
 
 ### Edge Functions (Deno)
 
-As 4 Edge Functions (`supabase/functions/*`) têm sua própria suíte, em
-Deno — outro runtime, fora do Jest de propósito (`jest.config.js` ignora
-`/supabase/functions/` explicitamente pra nunca confundir os dois). 32
+As 5 Edge Functions (`supabase/functions/*`, mais `_shared/` — lógica
+compartilhada, não deployada) têm sua própria suíte, em Deno — outro
+runtime, fora do Jest de propósito (`jest.config.js` ignora
+`/supabase/functions/` explicitamente pra nunca confundir os dois). 37
 testes, mesma filosofia da Fase 1 do Jest: lógica pura extraída do handler
-primeiro — `toActivityRow`/`needsTokenRefresh` (strava-sync),
-`buildUserMessage`/`isValidLevel` (generate-workout-plan), `htmlPage`
-(strava-oauth-callback), `toBase64` (analyze-vision) — mais os ramos do
-handler que retornam **antes** de precisar de Supabase/Claude/Strava de
-verdade (CORS, autenticação, validação de entrada). O que exige uma API
-externa de verdade (trocar código OAuth por token, chamar a Claude) fica
-de fora — não dá pra testar isso sem gastar chamada real.
+primeiro — `toActivityRow`/`needsTokenRefresh` (`_shared/stravaSync.ts`,
+usada por strava-sync e strava-sync-all), `buildUserMessage`/`isValidLevel`
+(generate-workout-plan), `htmlPage` (strava-oauth-callback), `toBase64`
+(analyze-vision) — mais os ramos do handler que retornam **antes** de
+precisar de Supabase/Claude/Strava de verdade (CORS, autenticação,
+segredo do cron, validação de entrada). O que exige uma API externa de
+verdade (trocar código OAuth por token, chamar a Claude, chamar o Strava)
+fica de fora — não dá pra testar isso sem gastar chamada real.
 
 ```bash
 # instala o Deno (uma vez): irm https://deno.land/install.ps1 | iex  (PowerShell/Windows)
 deno test --allow-net --allow-env --node-modules-dir=none \
+  supabase/functions/_shared \
   supabase/functions/strava-oauth-callback \
   supabase/functions/strava-sync \
+  supabase/functions/strava-sync-all \
   supabase/functions/generate-workout-plan \
   supabase/functions/analyze-vision
 ```
@@ -519,6 +528,3 @@ Performance OS comparado com o estado real do app):
    grava em `health_entries`/tabela de atividades).
 3. **Apple HealthKit**: requer build nativo (não funciona no preview web).
 4. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
-5. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
-   até agora (ver "Testes e CI") — as próximas telas a valer a pena testar
-   são as com mais lógica de interação (Hábitos, Nutrition).

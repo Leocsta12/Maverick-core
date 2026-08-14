@@ -7,15 +7,17 @@ import { colors, spacing, typography, radius } from '../../src/theme/tokens';
 import { TextField } from '../../src/components/TextField';
 import { Button } from '../../src/components/Button';
 import { showAlert } from '../../src/lib/alert';
+import { OfflineBanner } from '../../src/components/OfflineBanner';
+import { loadWithCache } from '../../src/lib/offlineCache';
+import { addMealOffline, addWaterOffline, flushOfflineQueue, queuedWriteCount } from '../../src/lib/offlineSync';
 import {
   DailyTotals,
   MEAL_TYPES,
   Meal,
   MealType,
+  NewMeal,
   NutritionGoals,
   WaterLog,
-  addMeal,
-  addWater,
   computeDailyTotals,
   deleteMeal,
   getGoals,
@@ -43,6 +45,8 @@ export default function Nutrition() {
   const [goals, setGoals] = useState<NutritionGoals | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingWater, setIsAddingWater] = useState(false);
+  const [offlineSince, setOfflineSince] = useState<string | null>(null);
+  const [pendingWrites, setPendingWrites] = useState(0);
 
   const today = todayIsoDate();
 
@@ -50,10 +54,26 @@ export default function Nutrition() {
     if (!user) return;
     setIsLoading(true);
     try {
-      const [m, w, g] = await Promise.all([listMeals(user.id, today), listWaterLogs(user.id, today), getGoals(user.id)]);
-      setMeals(m);
-      setWaterLogs(w);
-      setGoals(g);
+      const result = await loadWithCache(`nutrition:${user.id}:${today}`, async () => {
+        const [m, w, g] = await Promise.all([listMeals(user.id, today), listWaterLogs(user.id, today), getGoals(user.id)]);
+        return { meals: m, waterLogs: w, goals: g };
+      });
+      setMeals(result.data.meals);
+      setWaterLogs(result.data.waterLogs);
+      setGoals(result.data.goals);
+      setOfflineSince(result.isFromCache ? result.cachedAt : null);
+
+      // Veio da rede de verdade — sinal de que temos conexão, então
+      // aproveita pra despachar qualquer refeição/água que ficou pendente.
+      if (!result.isFromCache) {
+        const { synced } = await flushOfflineQueue();
+        if (synced > 0) {
+          const [m, w] = await Promise.all([listMeals(user.id, today), listWaterLogs(user.id, today)]);
+          setMeals(m);
+          setWaterLogs(w);
+        }
+      }
+      setPendingWrites(await queuedWriteCount());
     } catch {
       showAlert('Não foi possível carregar sua nutrição de hoje.');
     } finally {
@@ -71,13 +91,47 @@ export default function Nutrition() {
     if (!user) return;
     setIsAddingWater(true);
     try {
-      await addWater(user.id, today, amountMl);
-      setWaterLogs(await listWaterLogs(user.id, today));
+      const result = await addWaterOffline(user.id, today, amountMl);
+      if (result.queued) {
+        setWaterLogs((prev) => [
+          ...prev,
+          { id: `pending-${Date.now()}`, entryDate: today, amountMl, loggedAt: new Date().toISOString() },
+        ]);
+        setPendingWrites(await queuedWriteCount());
+        showAlert('Sem conexão agora — salvo no aparelho. Sincroniza sozinho assim que a internet voltar.');
+      } else {
+        setWaterLogs(await listWaterLogs(user.id, today));
+      }
     } catch {
       showAlert('Não foi possível registrar a água.');
     } finally {
       setIsAddingWater(false);
     }
+  };
+
+  const handleAddMeal = async (meal: NewMeal): Promise<{ queued: boolean }> => {
+    if (!user) return { queued: false };
+    const result = await addMealOffline(user.id, meal);
+    if (result.queued) {
+      setMeals((prev) => [
+        ...prev,
+        {
+          id: `pending-${Date.now()}`,
+          entryDate: meal.entryDate,
+          mealType: meal.mealType,
+          name: meal.name,
+          calories: meal.calories ?? null,
+          proteinG: meal.proteinG ?? null,
+          carbsG: meal.carbsG ?? null,
+          fatG: meal.fatG ?? null,
+          loggedAt: new Date().toISOString(),
+        },
+      ]);
+      setPendingWrites(await queuedWriteCount());
+    } else {
+      setMeals(await listMeals(user.id, today));
+    }
+    return result;
   };
 
   const handleUndoWater = async () => {
@@ -118,6 +172,13 @@ export default function Nutrition() {
       <Text style={styles.eyebrow}>NUTRITION</Text>
       <Text style={styles.title}>Sua nutrição de hoje</Text>
 
+      <OfflineBanner cachedAt={offlineSince} />
+      {pendingWrites > 0 && (
+        <Text style={styles.pendingNote}>
+          {pendingWrites} registro{pendingWrites === 1 ? '' : 's'} aguardando conexão pra sincronizar.
+        </Text>
+      )}
+
       <WaterCard total={totals.waterMl} goalMl={goals?.dailyWaterMl ?? 2000} isBusy={isAddingWater} onAdd={handleAddWater} onUndo={handleUndoWater} hasLogs={waterLogs.length > 0} />
 
       <MacrosCard totals={totals} goals={goals} />
@@ -144,11 +205,7 @@ export default function Nutrition() {
         ))
       )}
 
-      <AddMealForm
-        onAdded={async () => {
-          if (user) setMeals(await listMeals(user.id, today));
-        }}
-      />
+      <AddMealForm onAdd={handleAddMeal} />
 
       {goals ? (
         <GoalsEditor
@@ -239,8 +296,7 @@ function MacrosCard({ totals, goals }: { totals: DailyTotals; goals: NutritionGo
   );
 }
 
-function AddMealForm({ onAdded }: { onAdded: () => void }) {
-  const { user } = useAuth();
+function AddMealForm({ onAdd }: { onAdd: (meal: NewMeal) => Promise<{ queued: boolean }> }) {
   const [mealType, setMealType] = useState<MealType>('cafe_da_manha');
   const [name, setName] = useState('');
   const [calories, setCalories] = useState('');
@@ -250,10 +306,10 @@ function AddMealForm({ onAdded }: { onAdded: () => void }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const handleAdd = async () => {
-    if (!user || !name.trim()) return;
+    if (!name.trim()) return;
     setIsSaving(true);
     try {
-      await addMeal(user.id, {
+      const result = await onAdd({
         entryDate: todayIsoDate(),
         mealType,
         name,
@@ -267,7 +323,9 @@ function AddMealForm({ onAdded }: { onAdded: () => void }) {
       setProtein('');
       setCarbs('');
       setFat('');
-      onAdded();
+      if (result.queued) {
+        showAlert('Sem conexão agora — salvo no aparelho. Sincroniza sozinho assim que a internet voltar.');
+      }
     } catch {
       showAlert('Não foi possível registrar a refeição.');
     } finally {
@@ -365,6 +423,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   emptyText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted },
+  pendingNote: {
+    fontFamily: typography.body,
+    fontSize: 11,
+    color: colors.warning,
+    marginBottom: spacing.md,
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

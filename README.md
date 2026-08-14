@@ -186,9 +186,8 @@ visão de produto (ver análise de plataforma).
 
 ## Offline
 
-**Treinos** e **Health** funcionam sem internet — são os dois módulos onde
-faz mais sentido abrir sem sinal (academia, corrida). Os outros módulos
-(Vision, Nutrition, Coach, Hábitos) ainda exigem conexão pra tudo.
+**Treinos**, **Health** e **Nutrition** funcionam sem internet. Vision,
+Coach e Hábitos ainda exigem conexão pra tudo.
 
 **Fase 1 (leitura)** — padrão "cache read-through" em
 [`src/lib/offlineCache.ts`](src/lib/offlineCache.ts): `loadWithCache(chave,
@@ -200,30 +199,48 @@ mostra o aviso `<OfflineBanner/>` com o horário do último dado salvo.
 **Fase 2 (escrita)** — [`src/lib/offlineSync.ts`](src/lib/offlineSync.ts):
 fila persistida no `AsyncStorage`. Quando uma escrita falha por falta de
 conexão, em vez de mostrar erro, a intenção fica guardada
-(`upsertHealthEntryOffline`, `markDayDoneOffline`, `markDayUndoneOffline`)
-e a tela atualiza o próprio estado local na hora (otimista — "salvo no
-aparelho, sincroniza sozinho depois"). A fila sai sozinha
-(`flushOfflineQueue`) em três momentos: ao abrir o app com sessão ativa
-(`OfflineSyncOnStart` em `app/_layout.tsx`), e depois de qualquer
-carregamento de Health/Treinos que confirme que a rede voltou. Escritas
-repetidas pro mesmo alvo (ex: marcar e desmarcar o mesmo dia offline, ou
-registrar o mesmo dia duas vezes) substituem a pendência anterior em vez de
-empilhar — só o estado final desejado importa, não o histórico de eventos.
-Mesmo escopo da Fase 1: só Health (registrar hoje) e Treinos (marcar/
-desmarcar o dia) — fluxos que dependem de resposta da rede pra fazer
-sentido (gerar treino por IA, analisar fotos) não são enfileiráveis.
+(`upsertHealthEntryOffline`, `markDayDoneOffline`, `markDayUndoneOffline`,
+`addMealOffline`, `addWaterOffline`) e a tela atualiza o próprio estado
+local na hora (otimista — "salvo no aparelho, sincroniza sozinho depois").
+A fila sai sozinha (`flushOfflineQueue`) em três momentos: ao abrir o app
+com sessão ativa (`OfflineSyncOnStart` em `app/_layout.tsx`), e depois de
+qualquer carregamento de Health/Treinos/Nutrition que confirme que a rede
+voltou. Escritas repetidas pro mesmo alvo (ex: marcar e desmarcar o mesmo
+dia offline, ou registrar o mesmo dia de Health duas vezes) substituem a
+pendência anterior em vez de empilhar — só o estado final desejado importa.
+Refeição e água são diferentes: cada registro é independente (a pessoa pode
+comer duas coisas offline), então **empilham** em vez de substituir. Mesmo
+espírito da Fase 1: editar/remover coisas já salvas (deletar refeição,
+desfazer água, editar metas) continua só online, e fluxos que dependem de
+resposta da rede pra fazer sentido (gerar treino por IA, analisar fotos)
+não são enfileiráveis.
+
+Mais de uma tela pode chamar `flushOfflineQueue()` quase ao mesmo tempo (o
+`OfflineSyncOnStart` do app inteiro, e o `load()` de cada tela) — sem
+cuidado, duas chamadas concorrentes leem a mesma fila antes de qualquer uma
+escrever de volta, e cada uma sincroniza os mesmos itens de novo. Isso foi
+pego durante o teste do offline de Nutrition (refeição/água duplicada de
+verdade no banco — Health/Treinos não sofriam disso na prática porque
+`upsertHealthEntry`/`markDayDone` são idempotentes, mas `addMeal`/
+`addWater` são inserts puros). Corrigido com uma trava em memória
+(`flushOfflineQueue` compartilha a mesma promise entre chamadas
+concorrentes) e removendo cada item da fila persistida *antes* de tentar
+sincronizar, não só no final — encolhe a janela de corrida pra "ler +
+escrever um item" em vez de "processar a fila inteira". Testado com duas
+chamadas concorrentes de verdade em
+[`offlineSync.test.ts`](src/lib/__tests__/offlineSync.test.ts).
 
 Testado simulando perda de rede de verdade (bloqueando as chamadas
 `/rest/v1/` do Supabase no navegador, mantendo `/auth/v1/` liberado pra não
-travar o login): com o cache já populado, Treinos e Health continuaram
-mostrando os dados certos com o aviso de offline; sem cache pra aquele dado
-específico (ex: um dia do plano nunca aberto antes), o app mostra um erro
-amigável em vez de travar; registrar um dia novo de Health e marcar um
-treino como concluído **offline** atualizaram a tela na hora (com o aviso
-de "N alterações aguardando conexão"), e ao restaurar a rede e recarregar,
-a fila sumiu sozinha — confirmado direto no banco que os dois chegaram
-(`health_entries` e `workout_logs`) com os valores exatos registrados
-offline.
+travar o login): com o cache já populado, as telas continuaram mostrando os
+dados certos com o aviso de offline; sem cache pra aquele dado específico
+(ex: um dia do plano nunca aberto antes), o app mostra um erro amigável em
+vez de travar; registrar um dia novo de Health, marcar um treino como
+concluído e registrar refeição/água **offline** atualizaram a tela na hora
+(com o aviso de "N registros aguardando conexão"), e ao restaurar a rede e
+recarregar, a fila sumiu sozinha — confirmado direto no banco que tudo
+chegou (`health_entries`, `workout_logs`, `nutrition_meals`,
+`nutrition_water_logs`) com os valores exatos registrados offline.
 
 ## Nota técnica: Alert no web
 
@@ -469,10 +486,9 @@ com marcações, não uma barra de progresso genérica.
 Ordem combinada depois da análise de plataforma (documento de visão do
 Performance OS comparado com o estado real do app):
 
-1. **Offline nos demais módulos**: Vision, Nutrition, Coach e Hábitos ainda
-   exigem conexão pra tudo — extensão natural do mesmo `loadWithCache` (Fase
-   1) / `offlineSync.ts` (Fase 2, pra Nutrition — registrar refeição/água
-   offline seria o próximo candidato natural, mesmo padrão de Health).
+1. **Offline nos demais módulos**: Vision, Coach e Hábitos ainda exigem
+   conexão pra tudo — Health, Treinos e Nutrition já cobertos (Fase 1 leitura
+   + Fase 2 escrita).
 2. **Garmin Connect**: aguardando aprovação do Garmin Developer Program —
    assim que sair, entra no mesmo padrão do Strava (Edge Function própria,
    grava em `health_entries`/tabela de atividades).

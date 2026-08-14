@@ -8,6 +8,7 @@ import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 import { MaverickScoreRing } from '../../src/components/MaverickScoreRing';
 import { ModuleCard } from '../../src/components/ModuleCard';
 import { computeMaverickScore, listHealthEntries } from '../../src/lib/health';
+import { countPendingForMe } from '../../src/lib/coach';
 import { composeDailyBrief, NutritionToday, TrainingToday } from '../../src/lib/missionControl';
 import {
   getOrCreatePlan,
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const [training, setTraining] = useState<TrainingToday>(null);
   const [nutrition, setNutrition] = useState<NutritionToday>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingCoachCount, setPendingCoachCount] = useState(0);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -42,6 +44,10 @@ export default function Dashboard() {
         getGoals(user.id),
       ]);
       setScore(computeMaverickScore(entries));
+
+      countPendingForMe(user.id)
+        .then(setPendingCoachCount)
+        .catch(() => {});
 
       const [days, logs] = await Promise.all([listPlanDays(plan.id), listRecentLogs(user.id, 1)]);
       const today = days.find((d) => d.dayOfWeek === todayDayOfWeek()) ?? null;
@@ -143,6 +149,7 @@ export default function Dashboard() {
           icon="users"
           title="Coach"
           subtitle="Painel do treinador"
+          notificationCount={pendingCoachCount}
           onPress={() => router.push('/coach')}
         />
       </View>

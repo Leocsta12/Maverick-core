@@ -31,4 +31,19 @@ describe('ModuleCard', () => {
     render(<ModuleCard icon="heart" title="Health" subtitle="x" onPress={jest.fn()} />);
     expect(screen.queryByText('EM BREVE')).toBeNull();
   });
+
+  it('mostra a contagem quando há notificação pendente', () => {
+    render(<ModuleCard icon="users" title="Coach" subtitle="x" onPress={jest.fn()} notificationCount={2} />);
+    expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('mostra "9+" quando a contagem passa de 9', () => {
+    render(<ModuleCard icon="users" title="Coach" subtitle="x" onPress={jest.fn()} notificationCount={12} />);
+    expect(screen.getByText('9+')).toBeTruthy();
+  });
+
+  it('não mostra nada quando não há notificação pendente', () => {
+    render(<ModuleCard icon="users" title="Coach" subtitle="x" onPress={jest.fn()} notificationCount={0} />);
+    expect(screen.queryByText('0')).toBeNull();
+  });
 });

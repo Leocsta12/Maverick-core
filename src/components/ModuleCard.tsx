@@ -7,11 +7,13 @@ type Props = {
   title: string;
   subtitle: string;
   locked?: boolean;
+  /** Contagem pra sinalizar algo esperando atenção (ex: pedido de vínculo pendente no Coach). */
+  notificationCount?: number;
   onPress?: () => void;
   testID?: string;
 };
 
-export function ModuleCard({ icon, title, subtitle, locked, onPress, testID }: Props) {
+export function ModuleCard({ icon, title, subtitle, locked, notificationCount, onPress, testID }: Props) {
   return (
     <Pressable
       testID={testID}
@@ -20,6 +22,11 @@ export function ModuleCard({ icon, title, subtitle, locked, onPress, testID }: P
     >
       <View style={[styles.iconWrap, locked && { backgroundColor: colors.surfaceElevated }]}>
         <Feather name={icon} size={20} color={locked ? colors.steel : colors.ignition} />
+        {!!notificationCount && notificationCount > 0 && (
+          <View style={styles.notificationDot}>
+            <Text style={styles.notificationDotText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
+          </View>
+        )}
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
@@ -52,6 +59,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
+  notificationDot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notificationDotText: { fontFamily: typography.mono, fontSize: 9, color: colors.bg, fontWeight: '700' },
   title: { fontFamily: typography.bodySemiBold, fontSize: 14, color: colors.textPrimary },
   subtitle: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
   badge: {

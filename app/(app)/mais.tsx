@@ -1,8 +1,10 @@
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
+import { countPendingForMe } from '../../src/lib/coach';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 
 type Row = {
@@ -24,6 +26,18 @@ export default function Mais() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const [pendingCoachCount, setPendingCoachCount] = useState(0);
+
+  const load = useCallback(() => {
+    if (!user) return;
+    countPendingForMe(user.id)
+      .then(setPendingCoachCount)
+      .catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <ScrollView
@@ -46,6 +60,11 @@ export default function Mais() {
           >
             <View style={styles.iconWrap}>
               <Feather name={row.icon} size={18} color={colors.ignition} />
+              {row.href === '/coach' && pendingCoachCount > 0 && (
+                <View style={styles.notificationDot}>
+                  <Text style={styles.notificationDotText}>{pendingCoachCount > 9 ? '9+' : pendingCoachCount}</Text>
+                </View>
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>{row.title}</Text>
@@ -94,6 +113,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.xs,
   },
+  notificationDot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notificationDotText: { fontFamily: typography.mono, fontSize: 9, color: colors.bg, fontWeight: '700' },
   rowTitle: { fontFamily: typography.bodySemiBold, fontSize: 15, color: colors.textPrimary },
   rowSubtitle: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted, marginTop: 1 },
   signOutRow: {

@@ -429,9 +429,16 @@ com marcações, não uma barra de progresso genérica.
   plano de **Treinos**: ali o treinador ganha leitura *e escrita*, porque o
   próprio propósito do acesso é montar o treino da pessoa — a execução em si
   (séries/reps/carga, marcar o dia como feito) continua sempre só do
-  atleta. A tela do Coach ainda não tem uma seção visual de Nutrition por
-  atleta — a política de RLS já permite, só falta a UI (ver roadmap na
-  análise de plataforma).
+  atleta. A tela do Coach mostra uma seção de **Nutrição hoje** por atleta
+  (calorias, água e a lista de refeições do dia), reusando as mesmas funções
+  de leitura de `nutrition.ts` — nenhuma policy de RLS nova foi necessária,
+  só a UI. Pedidos de vínculo pendentes (nos dois sentidos — como treinador
+  ou como atleta esperando aprovação) também aparecem como um badge numérico
+  no ícone do módulo Coach no Painel e em Mais, pra sinalizar sem precisar
+  abrir a tela toda vez. É um indicador dentro do app, não uma push
+  notification de verdade — isso exigiria `expo-notifications`, registro de
+  token por dispositivo e um trigger no banco, o que é um passo bem maior
+  (e não dá pra testar no preview web, só num device real).
 
   **Painel de todos os atletas** — "Seus atletas" deixou de ser só uma lista
   de nomes: cada linha mostra o Maverick Score e um **check-in** — a data da
@@ -473,8 +480,6 @@ Performance OS comparado com o estado real do app):
 4. **Sincronização automática do Strava** (hoje é sob demanda, via botão
    "Sincronizar" — dá pra rodar num cron/webhook do Strava depois).
 5. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
-6. **Notificações** de pedido de vínculo pendente no Coach (hoje só aparece
-   ao abrir a tela), e uma seção de Nutrition na tela do Coach.
-7. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
+6. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
    até agora (ver "Testes e CI") — as próximas telas a valer a pena testar
    são as com mais lógica de interação (Hábitos, Nutrition).

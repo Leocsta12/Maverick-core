@@ -99,6 +99,19 @@ export async function listPendingForMe(userId: string): Promise<
   }));
 }
 
+// Só a contagem, sem buscar nome de ninguém — pro badge de notificação em
+// Mais/Painel, que só precisa saber "tem alguma coisa esperando ou não".
+export async function countPendingForMe(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('coach_links')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .neq('requested_by', userId)
+    .or(`coach_id.eq.${userId},athlete_id.eq.${userId}`);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 // Vínculos aceitos onde EU sou o treinador — os atletas que eu acompanho.
 export async function listMyAthletes(userId: string): Promise<Array<{ linkId: string; athlete: LinkedPerson }>> {
   const { data, error } = await supabase

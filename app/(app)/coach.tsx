@@ -28,6 +28,17 @@ import {
   listRecentCompletions,
   todayIsoDate,
 } from '../../src/lib/mission';
+import {
+  DailyTotals,
+  computeDailyTotals,
+  getGoals,
+  listMeals,
+  listWaterLogs,
+  mealTypeLabel,
+  Meal,
+  NutritionGoals,
+  todayIsoDate as todayIsoDateNutrition,
+} from '../../src/lib/nutrition';
 import { VisionPhoto, analyzeVisionPhotos, listVisionPhotos } from '../../src/lib/vision';
 import { WorkoutWeek } from '../../src/components/WorkoutWeek';
 
@@ -272,6 +283,9 @@ function AthleteDetail({ athleteId, athleteName }: { athleteId: string; athleteN
   const [healthEntries, setHealthEntries] = useState<HealthEntry[]>([]);
   const [habits, setHabits] = useState<MissionHabit[]>([]);
   const [completions, setCompletions] = useState<MissionCompletion[]>([]);
+  const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
+  const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals | null>(null);
+  const [nutritionTotals, setNutritionTotals] = useState<DailyTotals | null>(null);
   const [photos, setPhotos] = useState<VisionPhoto[]>([]);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [analysis, setAnalysis] = useState<string | null>(null);
@@ -283,18 +297,25 @@ function AthleteDetail({ athleteId, athleteName }: { athleteId: string; athleteN
     setIsLoading(true);
     setSelectedPhotoIds([]);
     setAnalysis(null);
+    const today = todayIsoDateNutrition();
     Promise.all([
       listHealthEntries(athleteId),
       listHabits(athleteId),
       listRecentCompletions(athleteId),
       listVisionPhotos(athleteId),
+      listMeals(athleteId, today),
+      listWaterLogs(athleteId, today),
+      getGoals(athleteId),
     ])
-      .then(([entries, habitsList, completionsList, photosList]) => {
+      .then(([entries, habitsList, completionsList, photosList, meals, waterLogs, goals]) => {
         if (!active) return;
         setHealthEntries(entries);
         setHabits(habitsList);
         setCompletions(completionsList);
         setPhotos(photosList);
+        setTodayMeals(meals);
+        setNutritionGoals(goals);
+        setNutritionTotals(computeDailyTotals(meals, waterLogs));
       })
       .catch(() => showAlert('Não foi possível carregar os dados desse atleta.'))
       .finally(() => active && setIsLoading(false));
@@ -383,6 +404,38 @@ function AthleteDetail({ athleteId, athleteName }: { athleteId: string; athleteN
       <Text style={styles.detailSubtitle}>Plano de treino</Text>
       <Text style={styles.hint}>Você pode montar e editar o treino semanal desse atleta.</Text>
       <WorkoutWeek athleteUserId={athleteId} canEditPlan />
+
+      <Text style={styles.detailSubtitle}>Nutrição hoje</Text>
+      {todayMeals.length === 0 ? (
+        <Text style={styles.emptyText}>Esse atleta ainda não registrou refeições hoje.</Text>
+      ) : (
+        <>
+          <View style={styles.detailScoreRow}>
+            <View style={styles.detailStat}>
+              <Text style={styles.detailStatValue}>
+                {Math.round(nutritionTotals?.calories ?? 0)}
+                {nutritionGoals?.dailyCalories ? <Text style={styles.detailStatMeta}> / {nutritionGoals.dailyCalories}</Text> : null}
+              </Text>
+              <Text style={styles.detailStatLabel}>KCAL</Text>
+            </View>
+            <View style={styles.detailStat}>
+              <Text style={styles.detailStatValue}>
+                {nutritionTotals?.waterMl ?? 0}
+                <Text style={styles.detailStatMeta}> / {nutritionGoals?.dailyWaterMl ?? 2000}ml</Text>
+              </Text>
+              <Text style={styles.detailStatLabel}>ÁGUA</Text>
+            </View>
+          </View>
+          <View style={{ marginTop: spacing.sm }}>
+            {todayMeals.map((meal) => (
+              <Text key={meal.id} style={styles.habitLine}>
+                · {mealTypeLabel(meal.mealType)}: {meal.name}
+                {meal.calories ? ` (${meal.calories} kcal)` : ''}
+              </Text>
+            ))}
+          </View>
+        </>
+      )}
 
       <Text style={styles.detailSubtitle}>Fotos de progresso</Text>
       {photos.length === 0 ? (
@@ -497,6 +550,7 @@ const styles = StyleSheet.create({
   detailScoreRow: { flexDirection: 'row', gap: spacing.lg },
   detailStat: { alignItems: 'flex-start' },
   detailStatValue: { fontFamily: typography.display, fontSize: 28, color: colors.textPrimary },
+  detailStatMeta: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted },
   detailStatLabel: { fontFamily: typography.mono, fontSize: 9, color: colors.steel, letterSpacing: 1 },
   detailInsight: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 18 },
   habitLine: { fontFamily: typography.body, fontSize: 13, color: colors.textPrimary, marginBottom: 2 },

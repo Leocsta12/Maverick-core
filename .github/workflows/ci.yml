@@ -44,7 +44,9 @@ jobs:
       - name: Testes das Edge Functions (Deno)
         run: >
           deno test --allow-net --allow-env --node-modules-dir=none
+          supabase/functions/_shared
           supabase/functions/strava-oauth-callback
           supabase/functions/strava-sync
+          supabase/functions/strava-sync-all
           supabase/functions/generate-workout-plan
           supabase/functions/analyze-vision

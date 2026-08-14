@@ -1,0 +1,30 @@
+name: Strava Auto Sync
+
+# Chama a Edge Function strava-sync-all a cada 6 horas, pra quem já
+# conectou o Strava não precisar tocar no botão "Sincronizar" manualmente
+# em Health. workflow_dispatch deixa rodar na mão também (útil pra testar
+# ou forçar uma sincronização fora do horário).
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar strava-sync-all
+        run: |
+          set -e
+          response=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://bexpclafvignpxvuxrlc.supabase.co/functions/v1/strava-sync-all" \
+            -H "x-cron-secret: ${{ secrets.STRAVA_CRON_SECRET }}" \
+            -H "content-type: application/json")
+          body=$(echo "$response" | head -n -1)
+          status=$(echo "$response" | tail -n 1)
+          echo "Status: $status"
+          echo "Resposta: $body"
+          if [ "$status" -ge 400 ]; then
+            echo "strava-sync-all retornou erro."
+            exit 1
+          fi

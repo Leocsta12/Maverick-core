@@ -1,69 +1,24 @@
 // Testes da Edge Function strava-sync (Deno). Rode com:
 //   deno test --allow-net --allow-env supabase/functions/strava-sync
 //
-// toActivityRow e needsTokenRefresh são lógica pura extraída do handler —
-// é onde os bugs de fallback ("o Strava não mandou esse campo, o que eu
-// gravo?") realmente moram. O handler em si só é testado nos ramos que
-// retornam antes de precisar de Strava/Supabase de verdade.
+// toActivityRow e needsTokenRefresh moram em ../../_shared/stravaSync.ts
+// (compartilhadas com strava-sync-all) — cobertas com mais detalhe em
+// _shared/__tests__/stravaSync.test.ts. Aqui só um teste de sanidade pra
+// confirmar que o re-export continua funcionando, mais os ramos do handler
+// que retornam antes de precisar de Strava/Supabase de verdade.
 
 import { assertEquals } from 'jsr:@std/assert';
 import { handler, needsTokenRefresh, toActivityRow } from '../index.ts';
 
-Deno.test('toActivityRow: usa sport_type quando "type" não vem', () => {
-  const row = toActivityRow('u1', {
-    id: 123,
-    sport_type: 'Run',
-    name: 'Corrida',
-    distance: 5000,
-    moving_time: 1800,
-    start_date: '2024-06-01T10:00:00Z',
-  });
+Deno.test('toActivityRow: re-exportado de _shared/stravaSync.ts continua funcionando', () => {
+  const row = toActivityRow('u1', { id: 123, type: 'Run' });
   assertEquals(row.activity_type, 'Run');
   assertEquals(row.strava_activity_id, 123);
-  assertEquals(row.distance_m, 5000);
-  assertEquals(row.user_id, 'u1');
 });
 
-Deno.test('toActivityRow: cai pra "Activity" quando nem type nem sport_type vêm', () => {
-  const row = toActivityRow('u1', { id: 1 });
-  assertEquals(row.activity_type, 'Activity');
-});
-
-Deno.test('toActivityRow: campos numéricos ausentes viram null, não undefined (undefined quebraria o upsert)', () => {
-  const row = toActivityRow('u1', { id: 1 });
-  assertEquals(row.distance_m, null);
-  assertEquals(row.moving_time_s, null);
-  assertEquals(row.calories, null);
-  assertEquals(row.average_heartrate, null);
-});
-
-Deno.test('toActivityRow: name vazio quando ausente, não undefined', () => {
-  const row = toActivityRow('u1', { id: 1 });
-  assertEquals(row.name, '');
-});
-
-Deno.test('needsTokenRefresh: true quando falta menos de 5 minutos pra expirar', () => {
+Deno.test('needsTokenRefresh: re-exportado de _shared/stravaSync.ts continua funcionando', () => {
   const now = Date.parse('2024-06-10T12:00:00Z');
-  const expiresAt = new Date(now + 3 * 60 * 1000).toISOString();
-  assertEquals(needsTokenRefresh(expiresAt, now), true);
-});
-
-Deno.test('needsTokenRefresh: false quando falta bastante tempo', () => {
-  const now = Date.parse('2024-06-10T12:00:00Z');
-  const expiresAt = new Date(now + 60 * 60 * 1000).toISOString();
-  assertEquals(needsTokenRefresh(expiresAt, now), false);
-});
-
-Deno.test('needsTokenRefresh: true quando o token já expirou', () => {
-  const now = Date.parse('2024-06-10T12:00:00Z');
-  const expiresAt = new Date(now - 60 * 1000).toISOString();
-  assertEquals(needsTokenRefresh(expiresAt, now), true);
-});
-
-Deno.test('needsTokenRefresh: exatamente na margem de 5 min conta como "precisa renovar"', () => {
-  const now = Date.parse('2024-06-10T12:00:00Z');
-  const expiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-  assertEquals(needsTokenRefresh(expiresAt, now), false); // igual à margem = ainda não passou do limite
+  assertEquals(needsTokenRefresh(new Date(now - 60 * 1000).toISOString(), now), true);
 });
 
 Deno.test('handler: responde OPTIONS pro CORS preflight sem exigir autenticação', async () => {

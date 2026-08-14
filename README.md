@@ -81,6 +81,21 @@ câmera (iOS), ou pressione `i` / `a` no terminal para abrir num simulador, ou
       endpoint direto (sem conseguir mandar um header de autenticação nosso).
    3. Adicione `EXPO_PUBLIC_STRAVA_CLIENT_ID` (mesmo valor do Client ID, é
       público por design em qualquer OAuth) no `.env.local`.
+   4. (Opcional) Sincronização automática, sem precisar tocar no botão
+      "Sincronizar": publique `strava-sync-all` e configure um segredo
+      qualquer (gerado por você, não é do Strava) que só essa função e o
+      workflow do GitHub Actions vão conhecer:
+      ```bash
+      npx supabase functions deploy strava-sync-all --project-ref <seu-ref> --no-verify-jwt
+      npx supabase secrets set CRON_SECRET=$(openssl rand -hex 32) --project-ref <seu-ref>
+      ```
+      Depois, em **Settings → Secrets and variables → Actions** no GitHub,
+      crie um secret `STRAVA_CRON_SECRET` com o **mesmo valor** — é o que
+      [`.github/workflows/strava-auto-sync.yml`](.github/workflows/strava-auto-sync.yml)
+      manda no header `x-cron-secret` a cada 6h (`workflow_dispatch` também
+      deixa rodar na mão, pela aba Actions). Sem esse secret configurado, o
+      workflow roda mas a função recusa (401) — nada quebra, só não
+      sincroniza sozinho.
 7. Para o **Maverick Coach IA** (geração de treino por IA em Treinos), publique
    a Edge Function — reaproveita o mesmo segredo `ANTHROPIC_API_KEY` já
    configurado no passo 5, não precisa configurar de novo:
@@ -159,16 +174,23 @@ supabase/
   schema.sql                  # schema completo (tabelas, RLS, bucket de Storage)
   functions/                  # cada uma exporta `handler` (+ helpers puros) e só
                                # sobe Deno.serve se `import.meta.main` — ver "Testes e CI"
+    _shared/
+      stravaSync.ts             # syncStravaForUser, toActivityRow, needsTokenRefresh — usado por
+                                 # strava-sync (sob demanda) e strava-sync-all (cron), não é deployado
+      __tests__/stravaSync.test.ts  # Deno test — toActivityRow, needsTokenRefresh
     analyze-vision/            # Edge Function que chama a Claude API (visão)
       __tests__/index.test.ts    # Deno test — toBase64, json, ramos do handler sem I/O
     strava-oauth-callback/      # troca o code do Strava por tokens, salva a conexão
       __tests__/index.test.ts    # Deno test — htmlPage, ramos do handler sem I/O
-    strava-sync/                 # busca atividades recentes e grava em strava_activities
-      __tests__/index.test.ts    # Deno test — toActivityRow, needsTokenRefresh, ramos do handler
+    strava-sync/                 # busca atividades recentes e grava em strava_activities (sob demanda, JWT do usuário)
+      __tests__/index.test.ts    # Deno test — re-exports de _shared, ramos do handler
+    strava-sync-all/             # mesma sincronização, pra todo mundo — chamada pelo cron (segredo compartilhado, não JWT)
+      __tests__/index.test.ts    # Deno test — portão de autenticação (x-cron-secret)
     generate-workout-plan/        # Edge Function que chama a Claude API (Maverick Coach IA)
       __tests__/index.test.ts      # Deno test — buildUserMessage, isValidLevel, ramos do handler
 .github/
   workflows/ci.yml               # typecheck + testes JS a cada push/PR, + job separado de testes Deno
+  workflows/strava-auto-sync.yml # chama strava-sync-all a cada 6h (cron do GitHub Actions)
 jest.config.js                   # preset jest-expo, setup, testMatch (ignora supabase/functions/)
 jest.setup.js                    # env falso do Supabase + mock do AsyncStorage pros testes
 ```
@@ -380,11 +402,14 @@ com marcações, não uma barra de progresso genérica.
   não entram no Score (propósito diferente: alimentam os gráficos de
   tendência em Vision, não a leitura de recuperação do dia). Tem também
   **integração real com o Strava** (seção "Atividades"): conecta via OAuth,
-  sincroniza corridas/pedais/natação/etc. Os tokens do Strava nunca ficam
-  legíveis pelo app nem pelo dono da conta — só as Edge Functions, via
-  `service_role`, os tocam. Integração com Garmin (aguardando aprovação do
-  Developer Program) e Apple HealthKit (precisa de build nativo) seguem
-  como próximos passos, escrevendo na mesma `health_entries`.
+  sincroniza corridas/pedais/natação/etc. — pelo botão "Sincronizar" (sob
+  demanda) ou sozinho, a cada 6h, via `strava-sync-all` chamada pelo cron
+  do GitHub Actions (opcional, ver "Configuração" > passo 6.4). Os tokens
+  do Strava nunca ficam legíveis pelo app nem pelo dono da conta — só as
+  Edge Functions, via `service_role`, os tocam. Integração com Garmin
+  (aguardando aprovação do Developer Program) e Apple HealthKit (precisa de
+  build nativo) seguem como próximos passos, escrevendo na mesma
+  `health_entries`.
 - **Vision (Evolução)** — fotos de progresso guardadas num bucket privado do
   Supabase Storage, comparação lado a lado sempre por data, e análise
   qualitativa por IA (Claude, via Edge Function) — nunca estima métricas
@@ -493,9 +518,7 @@ Performance OS comparado com o estado real do app):
    assim que sair, entra no mesmo padrão do Strava (Edge Function própria,
    grava em `health_entries`/tabela de atividades).
 3. **Apple HealthKit**: requer build nativo (não funciona no preview web).
-4. **Sincronização automática do Strava** (hoje é sob demanda, via botão
-   "Sincronizar" — dá pra rodar num cron/webhook do Strava depois).
-5. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
-6. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
+4. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
+5. **Mais telas cobertas por teste**: só Perfil tem teste de tela completo
    até agora (ver "Testes e CI") — as próximas telas a valer a pena testar
    são as com mais lógica de interação (Hábitos, Nutrition).

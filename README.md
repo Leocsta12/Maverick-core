@@ -105,6 +105,20 @@ câmera (iOS), ou pressione `i` / `a` no terminal para abrir num simulador, ou
 8. **Nutrition** não precisa de nenhum segredo novo — é só schema (tabelas
    `nutrition_meals`, `nutrition_water_logs`, `nutrition_goals`) já incluído
    no passo 2.
+9. **Monitoramento** (opcional — [`src/lib/monitoring.ts`](src/lib/monitoring.ts)):
+   sem esse passo o app roda normal, só sem relatório de erro nem analytics.
+   1. **Sentry** (erro): crie um projeto React Native em
+      [sentry.io](https://sentry.io), copie o DSN em **Settings → Client
+      Keys (DSN)**, e coloque em `EXPO_PUBLIC_SENTRY_DSN` no `.env.local`.
+   2. **PostHog** (analytics de produto): crie um projeto em
+      [posthog.com](https://posthog.com) (ou `eu.posthog.com`, se a região
+      escolhida for EU), copie a **Project API Key** em **Project
+      Settings**, e coloque em `EXPO_PUBLIC_POSTHOG_API_KEY` no
+      `.env.local` (`EXPO_PUBLIC_POSTHOG_HOST` só muda se o projeto for na
+      região EU — padrão já é US).
+   3. As duas chaves são públicas por design (mesmo espírito da anon key do
+      Supabase — só recebem eventos, não dão acesso a nada) — mesmo assim,
+      **nunca** vão no código do app: sempre no `.env.local`.
 
 ## Autenticação
 
@@ -277,13 +291,51 @@ assinatura) que, no web, renderiza um modal próprio via `<AlertHost/>`
 (montado uma vez em `app/_layout.tsx`); fora do web, chama o `Alert.alert`
 nativo de sempre. Todo o app já usa `showAlert` no lugar de `Alert.alert`.
 
+## Monitoramento
+
+[Sentry](https://sentry.io) (erro) + [PostHog](https://posthog.com) (analytics de
+produto), os dois opcionais — ver [`src/lib/monitoring.ts`](src/lib/monitoring.ts)
+e o passo 9 de "Configuração" acima. Sem as chaves configuradas, tudo vira
+no-op silencioso (mesmo espírito de `isStravaConfigured()`): o app roda
+normal em dev/CI sem precisar de conta em nenhum dos dois, diferente de
+`supabase.ts`, que é obrigatório e lança erro sem as env vars.
+
+- **`Sentry.GlobalErrorBoundary`** (`app/_layout.tsx`) captura qualquer
+  erro de render que travaria a tela — mostra um fallback simples ("Tentar
+  de novo") em vez de tela branca, e manda o erro pro Sentry antes disso
+  (se configurado). `initSentry()` roda o quanto antes possível, antes de
+  qualquer outro módulo poder lançar um erro durante o boot.
+- **`identifyUser`/`resetUser`** ligam/desligam a identificação da conta
+  junto com login/logout (`MonitoringOnAuthChange` em `app/_layout.tsx`) —
+  sem isso, todo evento e erro capturado ficaria anônimo.
+- **`trackScreenView`** manda um evento por troca de rota
+  (`ScreenViewTracker`, via `usePathname()` do expo-router) — a métrica
+  mais básica de analytics de produto, sem precisar instrumentar tela por
+  tela.
+- **`captureError`/`trackEvent`** ficam disponíveis pra uso pontual (ex:
+  marcar um evento de produto relevante como "treino concluído", ou
+  capturar um erro específico com mais contexto do que o boundary global
+  pega sozinho) — ainda não espalhados pelas telas, é o próximo passo
+  natural depois que as contas estiverem criadas e o volume de eventos
+  fizer sentido olhar.
+
+> `npm install` avisa que dois scripts de postinstall do `@sentry/cli`
+> ficaram bloqueados (`npm warn allow-scripts`) — de propósito, não
+> rodamos script de instalação de pacote sem revisar antes. Isso não afeta
+> nada do que está descrito aqui (captura de erro via SDK funciona sem o
+> CLI); ele só seria necessário mais pra frente, pra enviar source maps
+> num build de produção de verdade (facilita ler o stack trace de um erro
+> minificado). Se/quando isso for necessário, revise o script antes de
+> rodar `npm approve-scripts @sentry/cli` (ver aviso do próprio npm).
+
 ## Testes e CI
 
 `jest` + `jest-expo` (o preset oficial da Expo, já traz os mocks de módulo
 nativo prontos). **Fase 1** — testes de unidade sobre lógica pura em
 `src/lib/*.ts`: cálculo do Maverick Score, streak de hábitos, totais de
-nutrição, status de check-in do Coach, composição do Daily Brief e o cache
-offline. **Fase 2** — testes de componente e de tela com
+nutrição, status de check-in do Coach, composição do Daily Brief, o cache
+offline e o monitoramento (Sentry/PostHog no-op sem as chaves — ver
+"Monitoramento" acima). **Fase 2** — testes de componente e de tela com
 `@testing-library/react-native` (`^13`, não a `14` — ver nota abaixo):
 `Button`, `TextField`, `ModuleCard`, `OfflineBanner` e `TrendChart` como
 componentes isolados, e três telas inteiras — **Perfil**
@@ -293,7 +345,7 @@ mockando só `src/lib/nutrition.ts` e deixando `offlineCache`/`offlineSync`
 rodarem de verdade por cima — cobre a integração da tela com o offline,
 não só o caminho feliz) — como prova de que dá pra testar uma tela real:
 render, carregar, marcar/adicionar, e o que acontece quando a escrita
-falha. 101 testes, 15 suítes (JS/RN — ver também "Edge Functions (Deno)"
+falha. 112 testes, 16 suítes (JS/RN — ver também "Edge Functions (Deno)"
 abaixo).
 
 > **`@testing-library/react-native` 14 não funciona neste projeto ainda**: a

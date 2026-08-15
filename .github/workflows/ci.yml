@@ -40,10 +40,17 @@ jobs:
       # --node-modules-dir=none: sem isso o Deno tenta resolver os pacotes
       # npm transitivos do supabase-js contra o node_modules do projeto
       # Expo (que está aqui do lado, no mesmo repo) e falha — os dois
-      # ecossistemas são independentes, ver README > Testes e CI.
+      # ecossistemas são independentes. --min-dep-age=0: o Deno lê o
+      # package.json da raiz do repo (do app Expo, ecossistema totalmente
+      # separado) e tenta validar TODAS as dependências dele — mesmo as que
+      # nenhuma Edge Function importa — contra a política de "idade mínima
+      # de dependência" (bloqueia pacote publicado há menos de 24h). Quando
+      # o app instala algo recém-publicado, isso derruba o job do Deno sem
+      # nenhuma relação real com o que está sendo testado. Ver README >
+      # Testes e CI.
       - name: Testes das Edge Functions (Deno)
         run: >
-          deno test --allow-net --allow-env --node-modules-dir=none
+          deno test --allow-net --allow-env --node-modules-dir=none --min-dep-age=0
           supabase/functions/_shared
           supabase/functions/strava-oauth-callback
           supabase/functions/strava-sync

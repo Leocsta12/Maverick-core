@@ -405,7 +405,7 @@ fica de fora — não dá pra testar isso sem gastar chamada real.
 
 ```bash
 # instala o Deno (uma vez): irm https://deno.land/install.ps1 | iex  (PowerShell/Windows)
-deno test --allow-net --allow-env --node-modules-dir=none \
+deno test --allow-net --allow-env --node-modules-dir=none --min-dep-age=0 \
   supabase/functions/_shared \
   supabase/functions/strava-oauth-callback \
   supabase/functions/strava-sync \
@@ -413,6 +413,20 @@ deno test --allow-net --allow-env --node-modules-dir=none \
   supabase/functions/generate-workout-plan \
   supabase/functions/analyze-vision
 ```
+
+> **Pegadinha real #3**: o Deno lê o `package.json` da raiz do repo (do
+> app Expo — ecossistema totalmente separado, nenhuma Edge Function
+> importa nada de lá) e tenta validar **todas** as dependências dele
+> contra a política de "idade mínima de dependência" (bloqueia por padrão
+> qualquer versão publicada há menos de 24h). Isso já derrubou o job do
+> Deno duas vezes — não por causa de nada relacionado às Edge Functions,
+> mas porque o app instalou um pacote (Sentry/PostHog) recém-publicado.
+> Tentei isolar com um `deno.json`/`package.json` vazio dentro de
+> `supabase/functions/` (não funcionou — o Deno continua achando o
+> `package.json` da raiz) antes de aceitar `--min-dep-age=0` como a
+> correção de verdade: essa política nunca protegia nada que o Deno
+> realmente executa aqui, já que os pacotes bloqueados nem são importados
+> pelas Edge Functions.
 
 > **Pra isso funcionar, os 4 `index.ts` precisaram de um pequeno refactor**
 > (comportamento idêntico, só reorganização): cada um tinha um handler

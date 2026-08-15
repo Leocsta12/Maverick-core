@@ -120,6 +120,38 @@ câmera (iOS), ou pressione `i` / `a` no terminal para abrir num simulador, ou
       Supabase — só recebem eventos, não dão acesso a nada) — mesmo assim,
       **nunca** vão no código do app: sempre no `.env.local`.
 
+## Deploy (versão web)
+
+O jeito mais rápido de ter um link público é publicar a versão web (mesmo
+código, mesmo backend — o app é o mesmo, só o empacotamento muda). Build
+nativo pra loja de verdade (App Store/Play Store) é um passo à parte, mais
+adiante — precisa de conta de desenvolvedor Apple/Google, ícone/splash
+screen, e `eas build`, nenhum desses ainda configurado aqui.
+
+**Vercel** — [`vercel.json`](vercel.json) já traz a configuração:
+1. Em [vercel.com](https://vercel.com), **Add New → Project**, conecte o
+   repositório `Leocsta12/Maverick-core` do GitHub (mesma conta que já usa
+   pra CI). Framework preset pode ficar em "Other" — o `vercel.json` já diz
+   o comando de build (`npm run build`, que roda `expo export -p web`), o
+   de instalação (`npm install --legacy-peer-deps`, mesmo motivo do CI) e
+   onde fica o resultado (`dist/`).
+2. Em **Settings → Environment Variables**, adicione as mesmas variáveis do
+   `.env.local` (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+   `EXPO_PUBLIC_STRAVA_CLIENT_ID`, e as de Monitoramento se já tiver criado
+   as contas) — o build da Vercel não tem acesso ao seu `.env.local`
+   (gitignored de propósito), precisa configurar lá também. São todas
+   `EXPO_PUBLIC_*`, ou seja, já são públicas por design — mesmo assim, só
+   nesse painel, nunca commitadas.
+3. Cada push na `main` publica sozinho (mesmo esquema do CI). O output é
+   uma SPA (`"web": {"output": "single"}` no `app.json`) — o `rewrites` do
+   `vercel.json` manda qualquer rota (`/nutrition`, `/coach`, etc.) pro
+   `index.html`, senão um link direto pra uma tela interna dá 404.
+
+Testado localmente antes de documentar: `npm run build` gera `dist/`,
+servido com fallback de SPA (`npx serve -s dist`), a tela de login carrega
+sem nenhum erro no console e as rotas internas respondem 200 direto (não
+só navegando pelo app).
+
 ## Autenticação
 
 - **Cadastro** exige confirmação de e-mail: a conta é criada, mas o login só
@@ -134,10 +166,52 @@ câmera (iOS), ou pressione `i` / `a` no terminal para abrir num simulador, ou
   do e-mail, e o layout de `(auth)` redirecionaria pro dashboard antes dela
   poder trocar a senha.
 - ⚠️ **O serviço de e-mail padrão do Supabase tem um rate limit bem baixo**
-  (poucos e-mails por hora) — ótimo pra testar, **não serve pra produção**.
-  Antes de usuários reais, configure um provedor de SMTP próprio em
-  **Authentication > Settings > SMTP Settings** (Resend, SendGrid, Postmark,
-  Amazon SES etc.).
+  (poucos e-mails por hora) — já travou teste ao vivo aqui mais de uma vez.
+  Ótimo pra testar, **não serve nem pra um grupo pequeno de gente real**.
+  Escolhido **[Resend](https://resend.com)** como provedor — configure antes
+  de mandar o link pra qualquer pessoa de fora:
+  1. Crie a conta em resend.com, gere uma API key em **API Keys**.
+  2. Adicione e verifique um domínio em **Domains** (registros DNS que o
+     próprio Resend mostra) — sem domínio verificado, o Resend só entrega
+     pro e-mail dono da conta, não serve pra convidar ninguém.
+  3. No painel do Supabase: **Authentication → Settings → SMTP Settings**,
+     ligue "Enable Custom SMTP" com host `smtp.resend.com`, porta `465`,
+     usuário `resend`, senha = a API key gerada no passo 1, e o e-mail de
+     remetente usando o domínio verificado (ex: `no-reply@seudominio.com`).
+
+## Segurança
+
+Revisão das policies de RLS (`supabase/schema.sql`) antes de abrir o app pra
+gente de fora — achado real, corrigido e testado ao vivo:
+
+> **A policy de UPDATE em `coach_links`** (responder um pedido de vínculo)
+> só exigia, no `WITH CHECK`, que o `status` final fosse `accepted`/
+> `rejected` — sem travar `coach_id`/`athlete_id`/`requested_by`. RLS não
+> compara a linha antes/depois numa mesma cláusula (`USING` vê a linha
+> antiga, `WITH CHECK` vê só a nova), então nada impedia alguém que é parte
+> de **qualquer** vínculo pendente (inclusive um provocado com uma segunda
+> conta própria) de, numa chamada direta à API por fora do app, trocar
+> `athlete_id`/`coach_id` pra apontar pra outra pessoa e já mandar
+> `status='accepted'` junto — criando um vínculo de treinador sem
+> consentimento real da vítima, com acesso de leitura a Health, Nutrition,
+> Vision e Treinos dela. Corrigido com um trigger (`before update`) que
+> barra qualquer mudança nessas três colunas, já que RLS sozinha não
+> consegue expressar "essa coluna não muda depois de criada". **Testado ao
+> vivo com três contas descartáveis** (atacante, requerente, vítima): a
+> tentativa de redirecionar o vínculo foi bloqueada
+> (`COACH_LINK_IDENTIDADE_IMUTAVEL`), o fluxo normal de aceitar (só o
+> `status` muda) continuou funcionando, e a vítima ficou com zero vínculos
+> — confirmado direto no banco. Contas de teste removidas depois.
+>
+> As outras policies com `FOR ALL` + `WITH CHECK` do projeto (workout_plans,
+> workout_plan_days/exercises, nutrition_*, mission_*) não têm essa falha:
+> nelas, o `WITH CHECK` sempre re-deriva a autorização a partir da própria
+> coluna que poderia ser adulterada (ex: tentar trocar `user_id` só passa
+> se o *novo* valor também satisfizer "é meu ou sou treinador aceito dele")
+> — a coluna pode mudar, mas só pra outro valor igualmente autorizado. Em
+> `coach_links` o `WITH CHECK` checava uma coisa (status) sem nenhuma
+> relação com as colunas de identidade, que é o que tornava a lacuna
+> possível.
 
 ## Estrutura
 
@@ -593,4 +667,17 @@ Performance OS comparado com o estado real do app):
    assim que sair, entra no mesmo padrão do Strava (Edge Function própria,
    grava em `health_entries`/tabela de atividades).
 3. **Apple HealthKit**: requer build nativo (não funciona no preview web).
-4. **SMTP próprio** antes de produção real (ver aviso em "Autenticação").
+4. **SMTP próprio** — provedor decidido (Resend), falta criar a conta e
+   configurar no painel do Supabase (ver "Autenticação"). Bloqueante antes
+   de convidar qualquer pessoa de fora — o rate limit padrão do Supabase já
+   travou teste ao vivo aqui mais de uma vez.
+5. **Build nativo pra loja** (App Store/Play Store): nenhum passo dado
+   ainda — falta `eas.json` (perfis de build), ícone/splash screen em
+   `assets/` (hoje sairia com o ícone genérico do Expo), permissões de iOS
+   pro seletor de fotos do Vision (`NSPhotoLibraryUsageDescription`/
+   `NSCameraUsageDescription` em `app.json` — sem isso a Apple rejeita na
+   revisão), conta de desenvolvedor Apple (US$99/ano) e Google (US$25
+   único), e Política de Privacidade + Termos de Uso (exigido pelas duas
+   lojas, e vale a pena de qualquer forma dado que o app lida com dado de
+   saúde). Fase seguinte depois do beta fechado (TestFlight/Play Internal
+   Testing).

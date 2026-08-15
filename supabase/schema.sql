@@ -1010,3 +1010,37 @@ create policy "nutrition_water_logs: write own"
   with check (auth.uid() = user_id);
 
 create index if not exists nutrition_water_user_date_idx on public.nutrition_water_logs (user_id, entry_date);
+
+-- ============================================================
+-- Revisão de segurança (pré-lançamento fechado) — achado real:
+--
+-- A policy "coach_links: respond as counterparty" (UPDATE) só exige, no
+-- WITH CHECK, que o status final seja 'accepted'/'rejected' — não trava
+-- coach_id/athlete_id/requested_by. RLS não compara a linha antes/depois
+-- sozinha (USING vê a linha antiga, WITH CHECK vê só a nova), então nada
+-- impedia alguém que é parte de QUALQUER vínculo pendente (inclusive um
+-- criado por ele mesmo com uma segunda conta) de, numa chamada direta à
+-- API do Supabase por fora do app, trocar athlete_id/coach_id pra
+-- apontar pra outra pessoa e já mandar status='accepted' junto — criando
+-- um vínculo de treinador sem consentimento real da vítima, com acesso de
+-- leitura a tudo que o Coach lê (Health, Nutrition, Vision, Treinos...).
+--
+-- Trigger em vez de tentar expressar isso só com policy: é o jeito
+-- padrão de travar "essa coluna não muda depois de criada" no Postgres,
+-- já que USING/WITH CHECK não têm acesso simultâneo a OLD e NEW.
+create or replace function public.prevent_coach_link_identity_change()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.coach_id <> old.coach_id or new.athlete_id <> old.athlete_id or new.requested_by <> old.requested_by then
+    raise exception 'COACH_LINK_IDENTIDADE_IMUTAVEL' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists coach_links_prevent_identity_change on public.coach_links;
+create trigger coach_links_prevent_identity_change
+  before update on public.coach_links
+  for each row execute procedure public.prevent_coach_link_identity_change();

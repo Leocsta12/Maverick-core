@@ -889,20 +889,77 @@ create index if not exists workout_plan_exercises_day_idx on public.workout_plan
 create index if not exists workout_logs_user_date_idx on public.workout_logs (user_id, log_date desc);
 create index if not exists workout_log_sets_log_idx on public.workout_log_sets (log_id);
 
--- Seed: alguns exercícios comuns pra não começar com o catálogo vazio. Sem
--- foto/vídeo — quem cadastrar/editar depois anexa a mídia de verdade.
+-- Seed: exercícios comuns pra não começar (nem continuar) com o catálogo
+-- curto — ampliado depois que ficou claro, usando de verdade, que 9
+-- opções é pouco pra montar um treino variado. Sem foto/vídeo — quem
+-- cadastrar/editar depois anexa a mídia de verdade. `where not exists`
+-- torna o bloco idempotente — pode rodar de novo (ou ampliar de novo no
+-- futuro) sem duplicar o que já existe.
 insert into public.exercises (name, muscle_group, description, created_by)
 select v.name, v.muscle_group, v.description, null
 from (values
-  ('Agachamento livre', 'Pernas', 'Agachamento com barra livre, pés na largura dos ombros.'),
+  -- Peito
   ('Supino reto', 'Peito', 'Supino com barra, banco reto.'),
+  ('Supino inclinado', 'Peito', 'Supino com barra ou halteres, banco a 30-45°, foca a parte superior do peitoral.'),
+  ('Supino declinado', 'Peito', 'Supino com barra ou halteres, banco declinado, foca a parte inferior do peitoral.'),
+  ('Crucifixo com halteres', 'Peito', 'Abertura de braços com halteres, banco reto ou inclinado.'),
+  ('Crossover no cabo', 'Peito', 'Adução de braços na polia alta, cruzando as mãos à frente do corpo.'),
+  ('Flexão de braço', 'Peito', 'Flexão de braço no chão, mãos na largura dos ombros — sem equipamento.'),
+  ('Peck deck (voador)', 'Peito', 'Adução de braços na máquina, cotovelos apoiados.'),
+  -- Costas
   ('Levantamento terra', 'Costas', 'Puxada do chão com barra, postura neutra de coluna.'),
   ('Puxada frontal', 'Costas', 'Puxada na polia alta, pegada pronada.'),
+  ('Remada curvada', 'Costas', 'Remada com barra, tronco inclinado à frente.'),
+  ('Remada unilateral com halter', 'Costas', 'Remada com um halter por vez, apoio de joelho e mão no banco.'),
+  ('Remada baixa (cabo sentado)', 'Costas', 'Remada na polia baixa, sentado, puxando até o abdômen.'),
+  ('Barra fixa (pull-up)', 'Costas', 'Puxada do corpo até o queixo passar a barra, pegada pronada ou supinada.'),
+  ('Hiperextensão lombar', 'Costas', 'Extensão de tronco no banco romano, foca lombar e posterior de coxa.'),
+  -- Pernas
+  ('Agachamento livre', 'Pernas', 'Agachamento com barra livre, pés na largura dos ombros.'),
+  ('Leg press', 'Pernas', 'Empurrar a plataforma com as pernas, sentado na máquina inclinada.'),
+  ('Cadeira extensora', 'Pernas', 'Extensão de joelho na máquina, foca quadríceps.'),
+  ('Mesa flexora', 'Pernas', 'Flexão de joelho na máquina, deitado, foca posterior de coxa.'),
+  ('Afundo (lunge)', 'Pernas', 'Passada à frente flexionando os dois joelhos, com ou sem halteres.'),
+  ('Agachamento búlgaro', 'Pernas', 'Agachamento unilateral com o pé de trás apoiado num banco.'),
+  ('Stiff', 'Pernas', 'Levantamento terra com pernas quase estendidas, foca posterior de coxa e glúteo.'),
+  -- Glúteos
+  ('Elevação pélvica (hip thrust)', 'Glúteos', 'Elevação do quadril com apoio das costas no banco, barra sobre o quadril.'),
+  ('Coice no cabo (glute kickback)', 'Glúteos', 'Extensão de quadril na polia baixa, tornozelo preso ao cabo.'),
+  ('Abdução de quadril', 'Glúteos', 'Afastamento lateral da perna na máquina ou com elástico, foca glúteo médio.'),
+  -- Ombro
   ('Desenvolvimento com halteres', 'Ombro', 'Elevação dos halteres acima da cabeça, sentado ou em pé.'),
+  ('Elevação lateral', 'Ombro', 'Elevação dos halteres até a lateral, cotovelos levemente flexionados.'),
+  ('Elevação frontal', 'Ombro', 'Elevação dos halteres ou barra até a altura dos ombros, à frente do corpo.'),
+  ('Remada alta', 'Ombro', 'Puxada da barra até a altura do peito, cotovelos guiando o movimento.'),
+  ('Face pull', 'Ombro', 'Puxada da corda na polia alta em direção ao rosto, foca deltoide posterior.'),
+  ('Encolhimento de trapézio (shrug)', 'Ombro', 'Elevação dos ombros com barra ou halteres, sem flexionar o cotovelo.'),
+  -- Braço
   ('Rosca direta', 'Braço', 'Flexão de cotovelo com barra ou halteres.'),
+  ('Rosca alternada', 'Braço', 'Flexão de cotovelo com halteres, alternando os braços.'),
+  ('Rosca martelo', 'Braço', 'Flexão de cotovelo com halteres, pegada neutra (palmas viradas uma pra outra).'),
+  ('Rosca scott', 'Braço', 'Flexão de cotovelo apoiado no banco scott, isola o bíceps.'),
   ('Tríceps corda', 'Braço', 'Extensão de cotovelo na polia alta com corda.'),
+  ('Tríceps testa', 'Braço', 'Extensão de cotovelo deitado, barra ou halteres descendo em direção à testa.'),
+  ('Tríceps francês', 'Braço', 'Extensão de cotovelo acima da cabeça, com halter ou barra.'),
+  ('Mergulho no banco (bench dip)', 'Braço', 'Flexão de cotovelo apoiado de costas num banco, pernas estendidas à frente.'),
+  -- Core
   ('Prancha abdominal', 'Core', 'Sustentação isométrica em apoio nos antebraços.'),
-  ('Corrida leve', 'Cardio', 'Corrida em ritmo confortável, conversável.')
+  ('Prancha lateral', 'Core', 'Sustentação isométrica de lado, apoio num antebraço, foca oblíquos.'),
+  ('Abdominal supra', 'Core', 'Flexão de tronco deitado, foca porção superior do abdômen.'),
+  ('Elevação de pernas', 'Core', 'Elevação das pernas estendidas, deitado ou suspenso na barra, foca abdômen inferior.'),
+  ('Russian twist', 'Core', 'Rotação de tronco sentado, com ou sem peso, pés apoiados ou suspensos.'),
+  -- Panturrilha
+  ('Elevação de panturrilha em pé', 'Panturrilha', 'Extensão de tornozelo em pé, com ou sem carga.'),
+  ('Elevação de panturrilha sentado', 'Panturrilha', 'Extensão de tornozelo sentado, foca a porção mais profunda da panturrilha.'),
+  -- Cardio / Funcional
+  ('Corrida leve', 'Cardio', 'Corrida em ritmo confortável, conversável.'),
+  ('Corrida intervalada', 'Cardio', 'Alternância entre tiros de alta intensidade e recuperação.'),
+  ('Bicicleta ergométrica', 'Cardio', 'Pedalada estacionária, intensidade e ritmo ajustáveis.'),
+  ('Pular corda', 'Cardio', 'Saltos contínuos com corda, aquece e trabalha condicionamento.'),
+  ('Remo ergômetro', 'Cardio', 'Remada estacionária, trabalha corpo inteiro em cadência.'),
+  ('Burpee', 'Funcional', 'Agachamento + prancha + flexão + salto, num movimento só.'),
+  ('Kettlebell swing', 'Funcional', 'Balanço do kettlebell entre as pernas até a altura dos ombros, impulso do quadril.'),
+  ('Mountain climber', 'Funcional', 'Corrida estacionária em posição de prancha, joelhos alternando em direção ao peito.')
 ) as v(name, muscle_group, description)
 where not exists (select 1 from public.exercises e where e.name = v.name);
 

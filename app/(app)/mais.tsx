@@ -5,13 +5,14 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { countPendingForMe } from '../../src/lib/coach';
+import { isAppAdmin } from '../../src/lib/admin';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 
 type Row = {
   icon: keyof typeof Feather.glyphMap;
   title: string;
   subtitle: string;
-  href: '/vision' | '/coach' | '/profile' | '/mission' | '/planner';
+  href: '/vision' | '/coach' | '/profile' | '/mission' | '/planner' | '/admin';
 };
 
 const ROWS: Row[] = [
@@ -22,22 +23,33 @@ const ROWS: Row[] = [
   { icon: 'user', title: 'Perfil', subtitle: 'Sua conta e preferências', href: '/profile' },
 ];
 
+// Só aparece pra quem está em app_admins (ver schema.sql) — checado no
+// servidor via RLS de qualquer forma, isso aqui só evita mostrar a
+// entrada pra quem não vai poder usar.
+const ADMIN_ROW: Row = { icon: 'shield', title: 'Admin', subtitle: 'Todos os usuários (só leitura)', href: '/admin' };
+
 export default function Mais() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [pendingCoachCount, setPendingCoachCount] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const load = useCallback(() => {
     if (!user) return;
     countPendingForMe(user.id)
       .then(setPendingCoachCount)
       .catch(() => {});
+    isAppAdmin()
+      .then(setIsAdmin)
+      .catch(() => {});
   }, [user]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const rows = isAdmin ? [...ROWS, ADMIN_ROW] : ROWS;
 
   return (
     <ScrollView
@@ -52,11 +64,11 @@ export default function Mais() {
       <Text style={styles.title}>{user?.name?.split(' ')[0] ?? 'Atleta'}</Text>
 
       <View style={styles.list}>
-        {ROWS.map((row, i) => (
+        {rows.map((row, i) => (
           <Pressable
             key={row.href}
             onPress={() => router.push(row.href)}
-            style={({ pressed }) => [styles.row, i === ROWS.length - 1 && { borderBottomWidth: 0 }, pressed && { opacity: 0.85 }]}
+            style={({ pressed }) => [styles.row, i === rows.length - 1 && { borderBottomWidth: 0 }, pressed && { opacity: 0.85 }]}
           >
             <View style={styles.iconWrap}>
               <Feather name={row.icon} size={18} color={colors.ignition} />

@@ -1044,3 +1044,128 @@ drop trigger if exists coach_links_prevent_identity_change on public.coach_links
 create trigger coach_links_prevent_identity_change
   before update on public.coach_links
   for each row execute procedure public.prevent_coach_link_identity_change();
+
+-- ============================================================
+-- Maverick Admin — painel só de leitura pra quem administra o app (não é
+-- um papel de usuário como Coach, é operacional/suporte). De propósito
+-- SEM nenhuma policy de insert/update/delete pro papel "authenticated" em
+-- app_admins — mesmo raciocínio de strava_connections: só dá pra virar
+-- admin por uma ação direta no banco (SQL Editor / API de management),
+-- nunca pelo próprio app. Sem isso, o mesmo tipo de furo que corrigimos em
+-- coach_links (alguém se autoconceder acesso via chamada direta à API)
+-- seria trivial de reproduzir aqui — só que pra TODOS os dados, não um.
+create table if not exists public.app_admins (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.app_admins enable row level security;
+-- Nenhuma policy criada — ninguém autenticado lê nem escreve essa tabela
+-- pelo cliente. is_app_admin() abaixo é security definer justamente pra
+-- poder consultar sem depender de uma policy de select aqui.
+
+create or replace function public.is_app_admin()
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select exists (select 1 from public.app_admins where user_id = auth.uid())
+$$;
+
+-- Só pra tela de admin poder perguntar "eu sou admin?" sem dar select
+-- direto em app_admins — devolve só um boolean, nunca a lista de quem é.
+create or replace function public.am_i_admin()
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select public.is_app_admin()
+$$;
+
+grant execute on function public.am_i_admin() to authenticated;
+
+-- Uma policy extra de SELECT por tabela — mesmo padrão das policies "as
+-- coach", só que sem precisar de vínculo nenhum. Nunca WRITE (a decisão
+-- do produto foi só leitura) — strava_connections (tokens OAuth) fica de
+-- fora de propósito, igual já fica pro Coach.
+drop policy if exists "profiles: select as admin" on public.profiles;
+create policy "profiles: select as admin"
+  on public.profiles for select
+  using (public.is_app_admin());
+
+drop policy if exists "health_entries: select as admin" on public.health_entries;
+create policy "health_entries: select as admin"
+  on public.health_entries for select
+  using (public.is_app_admin());
+
+drop policy if exists "mission_habits: select as admin" on public.mission_habits;
+create policy "mission_habits: select as admin"
+  on public.mission_habits for select
+  using (public.is_app_admin());
+
+drop policy if exists "mission_completions: select as admin" on public.mission_completions;
+create policy "mission_completions: select as admin"
+  on public.mission_completions for select
+  using (public.is_app_admin());
+
+drop policy if exists "vision_photos: select as admin" on public.vision_photos;
+create policy "vision_photos: select as admin"
+  on public.vision_photos for select
+  using (public.is_app_admin());
+
+drop policy if exists "vision_analyses: select as admin" on public.vision_analyses;
+create policy "vision_analyses: select as admin"
+  on public.vision_analyses for select
+  using (public.is_app_admin());
+
+drop policy if exists "vision-photos: select as admin" on storage.objects;
+create policy "vision-photos: select as admin"
+  on storage.objects for select
+  using (bucket_id = 'vision-photos' and public.is_app_admin());
+
+drop policy if exists "workout_plans: select as admin" on public.workout_plans;
+create policy "workout_plans: select as admin"
+  on public.workout_plans for select
+  using (public.is_app_admin());
+
+drop policy if exists "workout_plan_days: select as admin" on public.workout_plan_days;
+create policy "workout_plan_days: select as admin"
+  on public.workout_plan_days for select
+  using (public.is_app_admin());
+
+drop policy if exists "workout_plan_exercises: select as admin" on public.workout_plan_exercises;
+create policy "workout_plan_exercises: select as admin"
+  on public.workout_plan_exercises for select
+  using (public.is_app_admin());
+
+drop policy if exists "workout_logs: select as admin" on public.workout_logs;
+create policy "workout_logs: select as admin"
+  on public.workout_logs for select
+  using (public.is_app_admin());
+
+drop policy if exists "workout_log_sets: select as admin" on public.workout_log_sets;
+create policy "workout_log_sets: select as admin"
+  on public.workout_log_sets for select
+  using (public.is_app_admin());
+
+drop policy if exists "nutrition_goals: select as admin" on public.nutrition_goals;
+create policy "nutrition_goals: select as admin"
+  on public.nutrition_goals for select
+  using (public.is_app_admin());
+
+drop policy if exists "nutrition_meals: select as admin" on public.nutrition_meals;
+create policy "nutrition_meals: select as admin"
+  on public.nutrition_meals for select
+  using (public.is_app_admin());
+
+drop policy if exists "nutrition_water_logs: select as admin" on public.nutrition_water_logs;
+create policy "nutrition_water_logs: select as admin"
+  on public.nutrition_water_logs for select
+  using (public.is_app_admin());
+
+drop policy if exists "strava_activities: select as admin" on public.strava_activities;
+create policy "strava_activities: select as admin"
+  on public.strava_activities for select
+  using (public.is_app_admin());

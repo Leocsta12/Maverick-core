@@ -213,6 +213,43 @@ gente de fora — achado real, corrigido e testado ao vivo:
 > relação com as colunas de identidade, que é o que tornava a lacuna
 > possível.
 
+### Painel de Admin
+
+Visão só-leitura de todos os usuários (`app/(app)/admin.tsx`), pra suporte
+e acompanhamento geral — **não** é um papel de usuário como Coach, que
+exige vínculo aceito por consentimento mútuo. Design deliberado pra não
+reabrir o mesmo tipo de furo que o achado do `coach_links` acima:
+
+- **`app_admins`** é uma tabela sem nenhuma policy de INSERT/UPDATE/DELETE
+  pro papel `authenticated` — mesmo raciocínio de `strava_connections`. Só
+  vira admin por uma ação direta no banco (SQL Editor ou API de
+  management), nunca pelo próprio app. Sem isso, o mesmo furo de
+  auto-conceder acesso via chamada direta à API seria trivial de
+  reproduzir aqui — só que pra **todos** os dados de **todo mundo**, não
+  um vínculo só.
+- **Só leitura de verdade, não só na UI**: existe uma policy extra de
+  `SELECT` por tabela (`is_app_admin()`, mesmo padrão de `checkInStatus`
+  "as coach") em profiles, Health, Nutrition, Treinos, Hábitos e Vision —
+  nunca uma policy de `INSERT`/`UPDATE`/`DELETE`. A tela reusa
+  `AthleteDetail` de `coach.tsx` com `canEdit={false}` (esconde os
+  controles de montar treino), mas a trava de verdade é a RLS: mesmo que a
+  UI liberasse escrita, o banco recusaria — não tem policy nenhuma pra
+  isso. `strava_connections` (tokens OAuth) fica de fora, igual já fica
+  pro Coach.
+- `am_i_admin()` (RPC `security definer`) devolve só um boolean — o
+  cliente nunca consegue listar quem mais é admin.
+
+**Testado ao vivo com duas contas descartáveis**: uma sem entrada em
+`app_admins` recebeu "Sem acesso" na tela e, testado direto contra a API
+(sem passar pela UI), só enxergou a própria linha em `profiles` — a trava
+é da RLS, não só da tela. A outra, com a entrada, viu a lista completa de
+usuários reais (confirmado `Content-Range: 0-6/7` numa chamada REST
+direta) e o detalhe de cada um; ao abrir o detalhe de uma conta que **não**
+era a própria, o botão "Marcar treino como concluído" nem apareceu — sem
+risco de escrita acidental em dado de outra pessoa. Contas de teste
+removidas depois, sobrando só a conta real do dono do projeto em
+`app_admins`.
+
 ## Estrutura
 
 ```
@@ -232,10 +269,11 @@ app/
     mission.tsx                # Hábitos: checklist diário com sequência (fora da tabBar, ver Mais)
     treinos.tsx                # plano semanal de treino do próprio atleta (usa WorkoutWeek)
     nutrition.tsx               # refeições, água e metas diárias
-    coach.tsx                  # vínculo treinador↔atleta + painel agregado por atleta (fora da tabBar, ver Mais)
+    coach.tsx                  # vínculo treinador↔atleta + painel agregado por atleta (exporta AthleteDetail, reusado em admin.tsx)
+    admin.tsx                   # todos os usuários, só leitura — visível só pra quem está em app_admins (fora da tabBar, ver Mais)
     profile.tsx                # fora da tabBar, ver Mais
     planner.tsx                 # semana unificada: treino + nutrição + recuperação por dia (fora da tabBar, ver Mais)
-    mais.tsx                   # menu com Planner / Hábitos / Vision / Coach / Perfil / Sair
+    mais.tsx                   # menu com Planner / Hábitos / Vision / Coach / Perfil / Sair (+ Admin, condicional)
 src/
   components/                # Button, TextField, MaverickScoreRing, ModuleCard, WorkoutWeek, TrendChart, OfflineBanner
     __tests__/                 # testes de componente (Fase 2 — ver "Testes e CI")
@@ -256,6 +294,7 @@ src/
     mission.ts                 # hábitos, conclusões e cálculo de streak
     nutrition.ts                # refeições, água, metas diárias e totais do dia
     coach.ts                   # código de vínculo, pedidos, listagem de atletas/treinadores
+    admin.ts                    # isAppAdmin (RPC am_i_admin), listAllUsers — painel de Admin
     strava.ts                  # URL de autorização, status, sincronização, formatação
     workouts.ts                # plano semanal, catálogo de exercícios, registro de séries, geração por IA
 supabase/
@@ -408,8 +447,9 @@ normal em dev/CI sem precisar de conta em nenhum dos dois, diferente de
 nativo prontos). **Fase 1** — testes de unidade sobre lógica pura em
 `src/lib/*.ts`: cálculo do Maverick Score, streak de hábitos, totais de
 nutrição, status de check-in do Coach, composição do Daily Brief, o cache
-offline e o monitoramento (Sentry/PostHog no-op sem as chaves — ver
-"Monitoramento" acima). **Fase 2** — testes de componente e de tela com
+offline, o monitoramento (Sentry/PostHog no-op sem as chaves — ver
+"Monitoramento" acima) e `isAppAdmin` (fail-closed em erro — ver
+"Segurança" acima). **Fase 2** — testes de componente e de tela com
 `@testing-library/react-native` (`^13`, não a `14` — ver nota abaixo):
 `Button`, `TextField`, `ModuleCard`, `OfflineBanner` e `TrendChart` como
 componentes isolados, e três telas inteiras — **Perfil**
@@ -419,7 +459,7 @@ mockando só `src/lib/nutrition.ts` e deixando `offlineCache`/`offlineSync`
 rodarem de verdade por cima — cobre a integração da tela com o offline,
 não só o caminho feliz) — como prova de que dá pra testar uma tela real:
 render, carregar, marcar/adicionar, e o que acontece quando a escrita
-falha. 112 testes, 16 suítes (JS/RN — ver também "Edge Functions (Deno)"
+falha. 115 testes, 17 suítes (JS/RN — ver também "Edge Functions (Deno)"
 abaixo).
 
 > **`@testing-library/react-native` 14 não funciona neste projeto ainda**: a
@@ -642,6 +682,12 @@ com marcações, não uma barra de progresso genérica.
   tela e já vê quem precisa de atenção, sem entrar atleta por atleta. Um
   resumo no topo da seção soma quantos estão vinculados e quantos estão
   "sem check-in há dias".
+- **Admin** — visão só-leitura de **todos** os usuários do app (não só
+  vinculados), pra suporte e acompanhamento geral — ver "Segurança" acima
+  pra como isso é travado (tabela `app_admins` sem policy de escrita pro
+  cliente, `WITH CHECK` nenhum pra escrita em qualquer tabela via admin).
+  Só aparece no menu Mais pra quem está em `app_admins`; reusa o mesmo
+  `AthleteDetail` do Coach, sem os controles de edição do plano de treino.
 - **Planner** — a visão unificada de "treino + nutrição + recuperação" que
   faltava no MVP do documento de visão. Mesma tira de 7 dias dos outros
   módulos; ao escolher um dia, três cards lado a lado: **Treino** (dia,

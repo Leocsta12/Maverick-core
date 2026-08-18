@@ -279,7 +279,21 @@ export default function Coach() {
   );
 }
 
-function AthleteDetail({ athleteId, athleteName }: { athleteId: string; athleteName: string }) {
+// Exportado pra reuso em Admin (app/(app)/admin.tsx) — mesma tela de
+// detalhe, só que chegando ali sem vínculo de Coach, via as policies
+// "select as admin" (RLS, ver schema.sql). canEdit controla só a UI
+// (mostrar ou não os controles de montar treino); a trava de verdade é a
+// RLS em si — não existe policy de escrita "as admin" em nenhuma tabela,
+// então mesmo que a UI liberasse, o banco recusaria.
+export function AthleteDetail({
+  athleteId,
+  athleteName,
+  canEdit = true,
+}: {
+  athleteId: string;
+  athleteName: string;
+  canEdit?: boolean;
+}) {
   const [healthEntries, setHealthEntries] = useState<HealthEntry[]>([]);
   const [habits, setHabits] = useState<MissionHabit[]>([]);
   const [completions, setCompletions] = useState<MissionCompletion[]>([]);
@@ -402,8 +416,10 @@ function AthleteDetail({ athleteId, athleteName }: { athleteId: string; athleteN
       )}
 
       <Text style={styles.detailSubtitle}>Plano de treino</Text>
-      <Text style={styles.hint}>Você pode montar e editar o treino semanal desse atleta.</Text>
-      <WorkoutWeek athleteUserId={athleteId} canEditPlan />
+      <Text style={styles.hint}>
+        {canEdit ? 'Você pode montar e editar o treino semanal desse atleta.' : 'Só leitura — sem edição pelo painel de admin.'}
+      </Text>
+      <WorkoutWeek athleteUserId={athleteId} canEditPlan={canEdit} />
 
       <Text style={styles.detailSubtitle}>Nutrição hoje</Text>
       {todayMeals.length === 0 ? (

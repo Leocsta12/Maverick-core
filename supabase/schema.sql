@@ -871,6 +871,13 @@ create table if not exists public.workout_log_sets (
   created_at timestamptz not null default now()
 );
 
+-- RPE (Rate of Perceived Exertion, escala Borg CR10: 1 = muito leve, 10 =
+-- falha total) por série — é o que destrava sugestão de progressão de
+-- carga (ver src/lib/progressiveOverload.ts) sem precisar de mais nada do
+-- atleta além do que ele já registra. Numeric (não integer) porque a
+-- prática comum usa meios pontos (ex.: RPE 8.5).
+alter table public.workout_log_sets add column if not exists rpe numeric;
+
 alter table public.workout_log_sets enable row level security;
 
 drop policy if exists "workout_log_sets: select via log" on public.workout_log_sets;

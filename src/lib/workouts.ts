@@ -58,6 +58,14 @@ export type SetEntry = {
   setNumber: number;
   repsDone: number | null;
   weightKg: number | null;
+  /** RPE (esforço percebido, escala 1-10) — opcional, alimenta a sugestão de progressão em src/lib/progressiveOverload.ts. */
+  rpe: number | null;
+};
+
+/** Uma série já registrada, marcada com o grupo muscular do exercício e a data do treino — a matéria-prima de src/lib/muscleVolume.ts. */
+export type LoggedSetEntry = {
+  muscleGroup: string | null;
+  logDate: string;
 };
 
 const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -335,12 +343,87 @@ export async function markDayUndone(planDayId: string, logDate: string): Promise
 export async function listLogSets(logId: string, exerciseId: string): Promise<SetEntry[]> {
   const { data, error } = await supabase
     .from('workout_log_sets')
-    .select('set_number, reps_done, weight_kg')
+    .select('set_number, reps_done, weight_kg, rpe')
     .eq('log_id', logId)
     .eq('exercise_id', exerciseId)
     .order('set_number', { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((row) => ({ setNumber: row.set_number, repsDone: row.reps_done, weightKg: row.weight_kg }));
+  return (data ?? []).map((row) => ({
+    setNumber: row.set_number,
+    repsDone: row.reps_done,
+    weightKg: row.weight_kg,
+    rpe: row.rpe,
+  }));
+}
+
+// Séries da ÚLTIMA vez (antes de `beforeDate`) que o atleta fez esse
+// exercício, em QUALQUER dia do plano — é a base de comparação certa pra
+// sugestão de progressão (não importa se foi num dia de treino diferente,
+// o que importa é a carga da sessão anterior desse mesmo exercício).
+//
+// Em duas consultas simples (só .eq/.lt/.in, sem filtro por coluna de
+// tabela aninhada) de propósito: a RLS de workout_log_sets já garante que
+// só vêm séries de logs do próprio usuário (ou do atleta, se for o
+// treinador chamando) — não precisa reforçar isso aqui, e evita depender
+// da sintaxe mais frágil de filtro/order em tabela embutida do PostgREST.
+export async function getLastCompletedSets(userId: string, exerciseId: string, beforeDate: string): Promise<SetEntry[]> {
+  const { data: recentLogs, error: logsError } = await supabase
+    .from('workout_logs')
+    .select('id, log_date')
+    .eq('user_id', userId)
+    .lt('log_date', beforeDate)
+    .order('log_date', { ascending: false })
+    .limit(30);
+  if (logsError) throw logsError;
+  if (!recentLogs || recentLogs.length === 0) return [];
+
+  const logIds = recentLogs.map((l) => l.id);
+  const { data: sets, error: setsError } = await supabase
+    .from('workout_log_sets')
+    .select('log_id, set_number, reps_done, weight_kg, rpe')
+    .eq('exercise_id', exerciseId)
+    .in('log_id', logIds);
+  if (setsError) throw setsError;
+  if (!sets || sets.length === 0) return [];
+
+  // Entre os logs (candidatos) que de fato têm esse exercício, fica com o
+  // de data mais recente.
+  const logDateById = new Map(recentLogs.map((l) => [l.id, l.log_date]));
+  const mostRecentLogId = sets.reduce((best, s) => {
+    const bestDate = logDateById.get(best) ?? '';
+    const thisDate = logDateById.get(s.log_id) ?? '';
+    return thisDate > bestDate ? s.log_id : best;
+  }, sets[0].log_id);
+
+  return sets
+    .filter((s) => s.log_id === mostRecentLogId)
+    .sort((a, b) => a.set_number - b.set_number)
+    .map((s) => ({ setNumber: s.set_number, repsDone: s.reps_done, weightKg: s.weight_kg, rpe: s.rpe }));
+}
+
+// Todas as séries registradas nos últimos `days` dias, marcadas com o
+// grupo muscular do exercício — matéria-prima de
+// weeklyVolumeByMuscleGroup (src/lib/muscleVolume.ts). Uma consulta só,
+// com os exercícios e o grupo muscular embutidos via join do PostgREST.
+export async function listRecentLoggedSets(userId: string, days = 35): Promise<LoggedSetEntry[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceIso = since.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('workout_logs')
+    .select('log_date, workout_log_sets (exercise_id, exercises (muscle_group))')
+    .eq('user_id', userId)
+    .gte('log_date', sinceIso);
+  if (error) throw error;
+
+  const entries: LoggedSetEntry[] = [];
+  for (const log of (data ?? []) as any[]) {
+    for (const set of log.workout_log_sets ?? []) {
+      entries.push({ muscleGroup: set.exercises?.muscle_group ?? null, logDate: log.log_date });
+    }
+  }
+  return entries;
 }
 
 // Maverick Coach IA — chama a Edge Function que monta o plano com a Claude
@@ -423,6 +506,7 @@ export async function saveLogSets(logId: string, exerciseId: string, sets: SetEn
     set_number: s.setNumber,
     reps_done: s.repsDone,
     weight_kg: s.weightKg,
+    rpe: s.rpe,
   }));
   const { error: insertError } = await supabase.from('workout_log_sets').insert(rows);
   if (insertError) throw insertError;

@@ -123,10 +123,10 @@ export function weeklyLoadSummary(activities: LoadableActivity[], maxHeartrate: 
  * mesmo que o número em si exista). Aqui, se não há nada nesta semana
  * ainda, `thisWeek` vem null e a UI mostra 0 de verdade.
  */
-export function currentAndPreviousWeek(
-  weeks: WeeklyLoad[],
+export function currentAndPreviousWeek<T extends { weekStartIso: string }>(
+  weeks: T[],
   now: Date = new Date()
-): { thisWeek: WeeklyLoad | null; lastWeek: WeeklyLoad | null } {
+): { thisWeek: T | null; lastWeek: T | null } {
   const thisWeekIso = weekStart(now).toISOString().slice(0, 10);
   const lastWeekIso = weekStart(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
   return {

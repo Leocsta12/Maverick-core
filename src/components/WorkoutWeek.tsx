@@ -13,6 +13,7 @@ import { flushOfflineQueue, markDayDoneOffline, markDayUndoneOffline, queuedWrit
 import {
   AthleteLevel,
   Exercise,
+  LoggedSetEntry,
   SetEntry,
   WorkoutLog,
   WorkoutPlan,
@@ -22,19 +23,25 @@ import {
   addExerciseToDay,
   dayOfWeekName,
   generateAIPlan,
+  getLastCompletedSets,
   getOrCreatePlan,
   listDayExercises,
   listExercises,
   listLogSets,
   listPlanDays,
+  listRecentLoggedSets,
   listRecentLogs,
   removeExerciseFromDay,
   saveLogSets,
   setExerciseVideoUrl,
   todayDayOfWeek,
+  todayIsoDate,
   updateDay,
   uploadExercisePhoto,
 } from '../lib/workouts';
+import { currentAndPreviousWeek } from '../lib/trainingLoad';
+import { parseRepsTarget, suggestProgression, type OverloadSuggestion } from '../lib/progressiveOverload';
+import { volumeTier, VOLUME_TIER_LABELS, weeklyVolumeByMuscleGroup } from '../lib/muscleVolume';
 
 function dateForDayOfWeek(dayOfWeek: number): string {
   const now = new Date();
@@ -183,6 +190,8 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
         />
       )}
 
+      <MuscleVolumeCard athleteUserId={athleteUserId} />
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekStrip}>
         {days.map((day) => {
           const date = dateForDayOfWeek(day.dayOfWeek);
@@ -329,6 +338,93 @@ function AIPlanGenerator({
 
       <Button label="Gerar plano" onPress={handleGenerate} loading={isGenerating} style={{ marginTop: spacing.xs }} />
       <Button label="Cancelar" variant="ghost" onPress={() => setExpanded(false)} style={{ marginTop: spacing.sm }} />
+    </View>
+  );
+}
+
+const VOLUME_TIER_COLORS: Record<string, string> = {
+  baixo: colors.warning,
+  moderado: colors.success,
+  alto: colors.warning,
+};
+
+// Volume semanal por grupo muscular — ver src/lib/muscleVolume.ts pro
+// raciocínio completo (séries de trabalho, não tonelagem). Visível tanto
+// pro atleta quanto pro treinador vinculado (RLS de workout_logs já cobre
+// os dois casos) — é leitura, não ação, então não precisa de canEditPlan.
+function MuscleVolumeCard({ athleteUserId }: { athleteUserId: string }) {
+  const [entries, setEntries] = useState<LoggedSetEntry[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    listRecentLoggedSets(athleteUserId)
+      .then((data) => active && setEntries(data))
+      .catch(() => active && setEntries([]));
+    return () => {
+      active = false;
+    };
+  }, [athleteUserId]);
+
+  if (entries == null || entries.length === 0) return null;
+
+  const weeks = weeklyVolumeByMuscleGroup(entries);
+  const { thisWeek } = currentAndPreviousWeek(weeks);
+  if (!thisWeek) return null;
+
+  const rows = Object.entries(thisWeek.setsByMuscle).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <View style={styles.volumeCard}>
+      <Text style={styles.setLoggerTitle}>VOLUME ESTA SEMANA (SÉRIES POR GRUPO)</Text>
+      {rows.map(([muscle, sets]) => {
+        const tier = volumeTier(sets);
+        return (
+          <View key={muscle} style={styles.volumeRow}>
+            <Text style={styles.volumeMuscle}>{muscle}</Text>
+            <Text style={styles.volumeSets}>{sets} séries</Text>
+            <Text style={[styles.volumeTierText, { color: VOLUME_TIER_COLORS[tier] }]}>{VOLUME_TIER_LABELS[tier]}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// Sugestão de progressão de carga — ver src/lib/progressiveOverload.ts.
+// Busca as séries da última vez que o atleta fez ESSE exercício (antes de
+// hoje) e compara com a faixa de reps do plano. `null` enquanto carrega
+// ou quando não há histórico ainda (não mostra nada em vez de "sem_dado"
+// logo de cara, pra não poluir a primeira vez que o exercício é feito).
+function ProgressionHint({ exerciseId, muscleGroup, targetReps }: { exerciseId: string; muscleGroup: string | null; targetReps: string | null }) {
+  const { user } = useAuth();
+  const [suggestion, setSuggestion] = useState<OverloadSuggestion | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    getLastCompletedSets(user.id, exerciseId, todayIsoDate())
+      .then((lastSets) => {
+        if (!active) return;
+        if (lastSets.length === 0) return; // primeira vez com esse exercício — nada pra sugerir ainda
+        setSuggestion(suggestProgression(lastSets, parseRepsTarget(targetReps), muscleGroup));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user, exerciseId, muscleGroup, targetReps]);
+
+  if (!suggestion || suggestion.action === 'sem_dado') return null;
+
+  const color = suggestion.action === 'aumentar' ? colors.success : suggestion.action === 'reduzir' ? colors.danger : colors.steel;
+  return (
+    <View style={styles.progressionHint}>
+      <Feather
+        name={suggestion.action === 'aumentar' ? 'trending-up' : suggestion.action === 'reduzir' ? 'trending-down' : 'minus'}
+        size={14}
+        color={color}
+      />
+      <Text style={[styles.progressionHintText, { color }]}>{suggestion.message}</Text>
     </View>
   );
 }
@@ -494,7 +590,10 @@ function ExerciseRow({
           {planExercise.notes ? <Text style={styles.exerciseDescription}>Obs: {planExercise.notes}</Text> : null}
 
           {canLog && logId ? (
-            <SetLogger logId={logId} exerciseId={exercise.id} defaultSets={planExercise.sets ?? 3} />
+            <>
+              <ProgressionHint exerciseId={exercise.id} muscleGroup={exercise.muscleGroup} targetReps={planExercise.reps} />
+              <SetLogger logId={logId} exerciseId={exercise.id} defaultSets={planExercise.sets ?? 3} />
+            </>
           ) : null}
         </View>
       )}
@@ -516,7 +615,7 @@ function SetLogger({ logId, exerciseId, defaultSets }: { logId: string; exercise
         setSets(
           existing.length > 0
             ? existing
-            : Array.from({ length: defaultSets }, (_, i) => ({ setNumber: i + 1, repsDone: null, weightKg: null }))
+            : Array.from({ length: defaultSets }, (_, i) => ({ setNumber: i + 1, repsDone: null, weightKg: null, rpe: null }))
         );
       })
       .finally(() => active && setIsLoading(false));
@@ -530,7 +629,7 @@ function SetLogger({ logId, exerciseId, defaultSets }: { logId: string; exercise
   };
 
   const addSet = () => {
-    setSets((prev) => [...prev, { setNumber: prev.length + 1, repsDone: null, weightKg: null }]);
+    setSets((prev) => [...prev, { setNumber: prev.length + 1, repsDone: null, weightKg: null, rpe: null }]);
   };
 
   const handleSave = async () => {
@@ -566,6 +665,14 @@ function SetLogger({ logId, exerciseId, defaultSets }: { logId: string; exercise
             onChangeText={(v) => updateSet(i, { weightKg: v ? Number(v.replace(',', '.')) : null })}
             keyboardType="decimal-pad"
             placeholder="kg"
+            style={styles.setInput}
+          />
+          <TextField
+            label=""
+            value={s.rpe?.toString() ?? ''}
+            onChangeText={(v) => updateSet(i, { rpe: v ? Number(v.replace(',', '.')) : null })}
+            keyboardType="decimal-pad"
+            placeholder="RPE"
             style={styles.setInput}
           />
         </View>
@@ -775,6 +882,28 @@ const styles = StyleSheet.create({
   videoLinkText: { fontFamily: typography.bodyMedium, fontSize: 12, color: colors.ignition, marginLeft: 6 },
   setLogger: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   setLoggerTitle: { fontFamily: typography.mono, fontSize: 10, color: colors.steel, letterSpacing: 1.5, marginBottom: spacing.xs },
+  volumeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.md,
+  },
+  volumeRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs, gap: spacing.sm },
+  volumeMuscle: { fontFamily: typography.bodyMedium, fontSize: 13, color: colors.textPrimary, flex: 1 },
+  volumeSets: { fontFamily: typography.mono, fontSize: 11, color: colors.textMuted },
+  volumeTierText: { fontFamily: typography.body, fontSize: 11 },
+  progressionHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  progressionHintText: { fontFamily: typography.body, fontSize: 12, flex: 1, lineHeight: 17 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   setNumber: { fontFamily: typography.mono, fontSize: 12, color: colors.textMuted, width: 24 },
   setInput: { flex: 1, marginBottom: spacing.xs },

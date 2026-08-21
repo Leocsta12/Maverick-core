@@ -7,6 +7,7 @@ import {
   acuteChronicRatio,
   activityLoad,
   classifyZone,
+  currentAndPreviousWeek,
   estimateMaxHeartrate,
   weekStart,
   weeklyLoadSummary,
@@ -137,6 +138,44 @@ describe('weeklyLoadSummary', () => {
     ];
     const summary = weeklyLoadSummary(activities, maxHr);
     expect(summary.map((w) => w.weekStartIso)).toEqual(['2026-08-17', '2026-08-24']);
+  });
+});
+
+describe('currentAndPreviousWeek', () => {
+  const maxHr = 190;
+  // Uma sexta-feira, pra semana atual (seg-dom) já ter alguns dias
+  // decorridos mas não estar completa ainda.
+  const friday = new Date('2026-08-21T15:00:00Z');
+
+  it('acha a semana atual mesmo sem ela ser o último item da lista (bug real: pegar weeks[length-1] às cegas)', () => {
+    // Só tem dado de duas semanas passadas — nada ainda nesta semana
+    // (é sexta e o atleta não treinou ainda). "Esta semana" tem que vir
+    // null, não silenciosamente virar a última semana com dado.
+    const activities = [
+      { movingTimeSeconds: 1800, averageHeartrate: 120, startedAt: '2026-08-03T08:00:00Z', sportType: 'Run' }, // duas semanas atrás
+      { movingTimeSeconds: 1800, averageHeartrate: 120, startedAt: '2026-08-10T08:00:00Z', sportType: 'Run' }, // semana passada
+    ];
+    const weeks = weeklyLoadSummary(activities, maxHr);
+    const { thisWeek, lastWeek } = currentAndPreviousWeek(weeks, friday);
+    expect(thisWeek).toBeNull();
+    expect(lastWeek?.weekStartIso).toBe('2026-08-10');
+  });
+
+  it('acha a semana atual e a anterior quando ambas têm dado', () => {
+    const activities = [
+      { movingTimeSeconds: 1800, averageHeartrate: 120, startedAt: '2026-08-12T08:00:00Z', sportType: 'Run' }, // semana passada
+      { movingTimeSeconds: 1800, averageHeartrate: 120, startedAt: '2026-08-19T08:00:00Z', sportType: 'Run' }, // esta semana
+    ];
+    const weeks = weeklyLoadSummary(activities, maxHr);
+    const { thisWeek, lastWeek } = currentAndPreviousWeek(weeks, friday);
+    expect(thisWeek?.weekStartIso).toBe('2026-08-17');
+    expect(lastWeek?.weekStartIso).toBe('2026-08-10');
+  });
+
+  it('retorna as duas null quando não há dado nenhum', () => {
+    const { thisWeek, lastWeek } = currentAndPreviousWeek([], friday);
+    expect(thisWeek).toBeNull();
+    expect(lastWeek).toBeNull();
   });
 });
 

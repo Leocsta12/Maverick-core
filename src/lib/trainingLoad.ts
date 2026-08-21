@@ -114,6 +114,27 @@ export function weeklyLoadSummary(activities: LoadableActivity[], maxHeartrate: 
   return Array.from(byWeek.values()).sort((a, b) => a.weekStartIso.localeCompare(b.weekStartIso));
 }
 
+/**
+ * Acha a semana atual e a anterior dentro de um `weeklyLoadSummary` PELA
+ * DATA DE VERDADE — nunca pelos dois últimos itens da lista. Pegar
+ * `weeks[length-1]` como "esta semana" é um bug sutil e real: se o atleta
+ * ainda não treinou nada nos primeiros dias da semana, isso silenciosamente
+ * mostraria a última semana COM dado como se fosse a atual (rótulo errado,
+ * mesmo que o número em si exista). Aqui, se não há nada nesta semana
+ * ainda, `thisWeek` vem null e a UI mostra 0 de verdade.
+ */
+export function currentAndPreviousWeek(
+  weeks: WeeklyLoad[],
+  now: Date = new Date()
+): { thisWeek: WeeklyLoad | null; lastWeek: WeeklyLoad | null } {
+  const thisWeekIso = weekStart(now).toISOString().slice(0, 10);
+  const lastWeekIso = weekStart(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+  return {
+    thisWeek: weeks.find((w) => w.weekStartIso === thisWeekIso) ?? null,
+    lastWeek: weeks.find((w) => w.weekStartIso === lastWeekIso) ?? null,
+  };
+}
+
 export type LoadRisk = 'baixa' | 'ideal' | 'atencao' | 'alto';
 
 export const LOAD_RISK_LABELS: Record<LoadRisk, string> = {

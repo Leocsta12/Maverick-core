@@ -33,6 +33,7 @@ import {
 import {
   acuteChronicRatio,
   classifyZone,
+  currentAndPreviousWeek,
   estimateMaxHeartrate,
   LOAD_RISK_LABELS,
   weeklyLoadSummary,
@@ -429,8 +430,7 @@ function TrainingLoadCard({ activities, maxHeartrate }: { activities: StravaActi
   }
 
   const weeks = weeklyLoadSummary(activities, maxHeartrate);
-  const thisWeek = weeks[weeks.length - 1] ?? null;
-  const lastWeek = weeks[weeks.length - 2] ?? null;
+  const { thisWeek, lastWeek } = currentAndPreviousWeek(weeks);
   const acwr = acuteChronicRatio(activities, maxHeartrate);
 
   const trendPct =

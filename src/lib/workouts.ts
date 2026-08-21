@@ -426,6 +426,34 @@ export async function listRecentLoggedSets(userId: string, days = 35): Promise<L
   return entries;
 }
 
+// Média de RPE das sessões de musculação dos últimos `days` dias —
+// alimenta o Score de Prontidão (src/lib/readiness.ts) como o sinal de
+// "quão pesado a musculação recente pesou". null quando não há nenhuma
+// série com RPE registrado ainda no período (não confundir com "RPE
+// zero" — a ausência de dado precisa continuar sendo neutra, nunca virar
+// um 0 artificial).
+export async function getRecentAverageRpe(userId: string, days = 14): Promise<number | null> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceIso = since.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('workout_logs')
+    .select('workout_log_sets (rpe)')
+    .eq('user_id', userId)
+    .gte('log_date', sinceIso);
+  if (error) throw error;
+
+  const values: number[] = [];
+  for (const log of (data ?? []) as any[]) {
+    for (const set of log.workout_log_sets ?? []) {
+      if (set.rpe != null) values.push(set.rpe);
+    }
+  }
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
 // Maverick Coach IA — chama a Edge Function que monta o plano com a Claude
 // API e grava o resultado no plano do atleta, usando o client normal (as
 // mesmas policies de RLS de sempre: o próprio atleta ou um treinador

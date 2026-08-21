@@ -38,7 +38,10 @@ import {
   LOAD_RISK_LABELS,
   weeklyLoadSummary,
   zoneLabel,
+  type LoadRisk,
 } from '../../src/lib/trainingLoad';
+import { computeReadiness } from '../../src/lib/readiness';
+import { getRecentAverageRpe } from '../../src/lib/workouts';
 
 // Segunda linha da atividade, com a métrica que realmente importa pra cada
 // esporte — pace não diz nada pra quem pedala, potência quase nunca existe
@@ -204,6 +207,8 @@ export default function Health() {
         <Text style={styles.insightText}>{insight}</Text>
       </View>
 
+      {user ? <ReadinessCard userId={user.id} recoveryScore={score} /> : null}
+
       <Text style={styles.sectionTitle}>Registrar hoje</Text>
       <TextField
         label="Sono (horas)"
@@ -277,6 +282,57 @@ export default function Health() {
         mesma base — o registro manual continua funcionando como alternativa.
       </Text>
     </ScrollView>
+  );
+}
+
+// Score de Prontidão — ver src/lib/readiness.ts. Combina o Maverick Score
+// (recuperação, já calculado no componente pai) com o ACWR das atividades
+// do Strava e o RPE médio recente de musculação. Busca esses dois últimos
+// de forma independente da StravaSection (que tem seu próprio ciclo de
+// carregamento) — é uma leitura pequena e não vale a pena acoplar os dois
+// componentes só pra compartilhar esse fetch.
+function ReadinessCard({ userId, recoveryScore }: { userId: string; recoveryScore: number | null }) {
+  const [acwrRisk, setAcwrRisk] = useState<LoadRisk | null>(null);
+  const [recentAvgRpe, setRecentAvgRpe] = useState<number | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [status, rpe] = await Promise.all([getStravaStatus(), getRecentAverageRpe(userId)]);
+        let risk: LoadRisk | null = null;
+        if (status.connected) {
+          const activities = await listStravaActivities(userId);
+          const maxHr = estimateMaxHeartrate(activities);
+          if (maxHr != null) risk = acuteChronicRatio(activities, maxHr).risk;
+        }
+        if (!active) return;
+        setAcwrRisk(risk);
+        setRecentAvgRpe(rpe);
+      } catch {
+        // Silencioso — a prontidão cai pros sinais que deu pra calcular, igual o resto de Health.
+      } finally {
+        if (active) setIsReady(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  if (!isReady) return null;
+
+  const readiness = computeReadiness({ recoveryScore, acwrRisk, recentAvgRpe });
+
+  return (
+    <View style={styles.readinessCard}>
+      <View style={styles.readinessHeaderRow}>
+        <Text style={styles.scoreLabel}>PRONTIDÃO DE TREINO</Text>
+        <Text style={styles.readinessValue}>{readiness.score}</Text>
+      </View>
+      <Text style={styles.insightText}>{readiness.message}</Text>
+    </View>
   );
 }
 
@@ -486,6 +542,16 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: spacing.md,
   },
+  readinessCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  readinessHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  readinessValue: { fontFamily: typography.display, fontSize: 22, color: colors.textPrimary },
   sectionTitle: {
     fontFamily: typography.bodySemiBold,
     fontSize: 15,

@@ -36,11 +36,51 @@ Deno.test('toActivityRow: campos numéricos ausentes viram null, não undefined 
   assertEquals(row.moving_time_s, null);
   assertEquals(row.calories, null);
   assertEquals(row.average_heartrate, null);
+  assertEquals(row.max_heartrate, null);
+  assertEquals(row.average_speed_ms, null);
+  assertEquals(row.max_speed_ms, null);
+  assertEquals(row.average_watts, null);
+  assertEquals(row.weighted_average_watts, null);
+  assertEquals(row.average_cadence, null);
+  assertEquals(row.total_elevation_gain_m, null);
+  assertEquals(row.sport_type, null);
 });
 
 Deno.test('toActivityRow: name vazio quando ausente, não undefined', () => {
   const row = toActivityRow('u1', { id: 1 });
   assertEquals(row.name, '');
+});
+
+Deno.test('toActivityRow: captura métricas de endurance (pedal com potência) quando o Strava manda', () => {
+  const row = toActivityRow('u1', {
+    id: 9,
+    type: 'Ride',
+    sport_type: 'Ride',
+    distance: 40000,
+    moving_time: 5400,
+    average_speed: 7.4,
+    max_speed: 15.2,
+    average_watts: 185.3,
+    weighted_average_watts: 201,
+    average_cadence: 84,
+    average_heartrate: 142,
+    max_heartrate: 168,
+    total_elevation_gain: 320,
+    start_date: '2024-06-01T10:00:00Z',
+  });
+  assertEquals(row.sport_type, 'Ride');
+  assertEquals(row.average_speed_ms, 7.4);
+  assertEquals(row.max_speed_ms, 15.2);
+  assertEquals(row.average_watts, 185.3);
+  assertEquals(row.weighted_average_watts, 201);
+  assertEquals(row.average_cadence, 84);
+  assertEquals(row.max_heartrate, 168);
+  assertEquals(row.total_elevation_gain_m, 320);
+});
+
+Deno.test('toActivityRow: sport_type cai pra "type" quando o Strava não manda sport_type', () => {
+  const row = toActivityRow('u1', { id: 1, type: 'Run' });
+  assertEquals(row.sport_type, 'Run');
 });
 
 Deno.test('needsTokenRefresh: true quando falta menos de 5 minutos pra expirar', () => {

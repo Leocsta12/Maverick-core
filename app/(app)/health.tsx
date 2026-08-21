@@ -16,13 +16,48 @@ import {
   activityTypeLabel,
   connectStrava,
   disconnectStrava,
+  enduranceSportCategory,
+  formatCadence,
   formatDistance,
   formatDuration,
+  formatElevationGain,
+  formatPaceMin100m,
+  formatPaceMinKm,
+  formatPower,
+  formatSpeedKmh,
   getStravaStatus,
   isStravaConfigured,
   listStravaActivities,
   syncStravaActivities,
 } from '../../src/lib/strava';
+
+// Segunda linha da atividade, com a métrica que realmente importa pra cada
+// esporte — pace não diz nada pra quem pedala, potência quase nunca existe
+// fora do pedal. `null` quando não há nada de endurance a mais pra mostrar
+// (ex.: musculação registrada como atividade no Strava) — a linha some
+// nesse caso em vez de aparecer vazia.
+function enduranceMetricsLine(a: StravaActivity): string | null {
+  const category = enduranceSportCategory(a.sportType);
+  const parts: string[] = [];
+
+  if (category === 'run') {
+    parts.push(formatPaceMinKm(a.averageSpeedMs));
+    parts.push(formatCadence(a.averageCadence, category));
+    parts.push(formatElevationGain(a.totalElevationGainM));
+  } else if (category === 'ride') {
+    parts.push(formatSpeedKmh(a.averageSpeedMs));
+    parts.push(formatPower(a.averageWatts, a.weightedAverageWatts));
+    parts.push(formatCadence(a.averageCadence, category));
+    parts.push(formatElevationGain(a.totalElevationGainM));
+  } else if (category === 'swim') {
+    parts.push(formatPaceMin100m(a.averageSpeedMs));
+  } else {
+    return null;
+  }
+
+  const filled = parts.filter((p) => p !== '—');
+  return filled.length > 0 ? filled.join(' · ') : null;
+}
 
 function formatEntryDate(iso: string): string {
   const [year, month, day] = iso.split('-');
@@ -322,17 +357,21 @@ function StravaSection({ userId }: { userId: string }) {
           {activities.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma atividade sincronizada ainda — toque em "Sincronizar".</Text>
           ) : (
-            activities.map((a) => (
-              <View key={a.id} style={styles.historyRow}>
-                <Text style={styles.historyDate}>
-                  {activityTypeLabel(a.type)} · {new Date(a.startedAt).toLocaleDateString('pt-BR')}
-                </Text>
-                <Text style={styles.historyValues}>
-                  {formatDistance(a.distanceMeters)} · {formatDuration(a.movingTimeSeconds)}
-                  {a.calories != null ? ` · ${Math.round(a.calories)} kcal` : ''}
-                </Text>
-              </View>
-            ))
+            activities.map((a) => {
+              const enduranceLine = enduranceMetricsLine(a);
+              return (
+                <View key={a.id} style={styles.historyRow}>
+                  <Text style={styles.historyDate}>
+                    {activityTypeLabel(a.sportType)} · {new Date(a.startedAt).toLocaleDateString('pt-BR')}
+                  </Text>
+                  <Text style={styles.historyValues}>
+                    {formatDistance(a.distanceMeters)} · {formatDuration(a.movingTimeSeconds)}
+                    {a.calories != null ? ` · ${Math.round(a.calories)} kcal` : ''}
+                  </Text>
+                  {enduranceLine ? <Text style={styles.historyMetrics}>{enduranceLine}</Text> : null}
+                </View>
+              );
+            })
           )}
           <Button label="Desconectar" variant="ghost" onPress={handleDisconnect} style={{ marginTop: spacing.md }} />
         </>
@@ -387,6 +426,12 @@ const styles = StyleSheet.create({
   },
   historyDate: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, letterSpacing: 1, marginBottom: 4 },
   historyValues: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted },
+  historyMetrics: {
+    fontFamily: typography.bodySemiBold,
+    fontSize: 12,
+    color: colors.textPrimary,
+    marginTop: 4,
+  },
   stravaHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

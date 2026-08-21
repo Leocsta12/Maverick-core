@@ -532,6 +532,22 @@ create table if not exists public.strava_activities (
   created_at timestamptz not null default now()
 );
 
+-- Métricas de endurance específicas por esporte (Fase "Coach de endurance") —
+-- o Strava já devolve isso tudo no endpoint de listagem de atividades
+-- (sem precisar de chamada extra por atividade nem estourar rate limit),
+-- só que o toActivityRow original não capturava. sport_type é o campo
+-- mais granular do Strava (Run/TrailRun/VirtualRide/Swim etc.) — mantido
+-- junto de activity_type (mais antigo, usado como fallback) pra não
+-- quebrar nada que já lê essa coluna.
+alter table public.strava_activities add column if not exists sport_type text;
+alter table public.strava_activities add column if not exists average_speed_ms numeric;
+alter table public.strava_activities add column if not exists max_speed_ms numeric;
+alter table public.strava_activities add column if not exists average_watts numeric;
+alter table public.strava_activities add column if not exists weighted_average_watts numeric;
+alter table public.strava_activities add column if not exists average_cadence numeric;
+alter table public.strava_activities add column if not exists total_elevation_gain_m numeric;
+alter table public.strava_activities add column if not exists max_heartrate numeric;
+
 alter table public.strava_activities enable row level security;
 
 drop policy if exists "strava_activities: select own" on public.strava_activities;

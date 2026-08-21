@@ -30,11 +30,27 @@ export function toActivityRow(userId: string, a: Record<string, unknown>) {
     user_id: userId,
     strava_activity_id: a.id,
     activity_type: a.type ?? a.sport_type ?? 'Activity',
+    // sport_type é o campo granular do Strava (ex.: TrailRun, VirtualRide,
+    // Run) — cai pra "type" (mais genérico) quando ausente, mesma lógica
+    // inversa do fallback de activity_type acima.
+    sport_type: a.sport_type ?? a.type ?? null,
     name: a.name ?? '',
     distance_m: a.distance ?? null,
     moving_time_s: a.moving_time ?? null,
     calories: a.calories ?? null,
     average_heartrate: a.average_heartrate ?? null,
+    max_heartrate: a.max_heartrate ?? null,
+    // Velocidade em m/s — o app deriva pace (corrida/natação) ou km/h
+    // (pedal) disso na hora de exibir, então guarda cru.
+    average_speed_ms: a.average_speed ?? null,
+    max_speed_ms: a.max_speed ?? null,
+    // Potência só existe pra quem pedala com medidor de watts — o Strava
+    // já manda null/ausente quando não tem, então não precisa de lógica
+    // extra aqui.
+    average_watts: a.average_watts ?? null,
+    weighted_average_watts: a.weighted_average_watts ?? null,
+    average_cadence: a.average_cadence ?? null,
+    total_elevation_gain_m: a.total_elevation_gain ?? null,
     started_at: a.start_date ?? new Date().toISOString(),
   };
 }

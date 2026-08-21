@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
@@ -30,6 +30,14 @@ import {
   listStravaActivities,
   syncStravaActivities,
 } from '../../src/lib/strava';
+import {
+  acuteChronicRatio,
+  classifyZone,
+  estimateMaxHeartrate,
+  LOAD_RISK_LABELS,
+  weeklyLoadSummary,
+  zoneLabel,
+} from '../../src/lib/trainingLoad';
 
 // Segunda linha da atividade, com a métrica que realmente importa pra cada
 // esporte — pace não diz nada pra quem pedala, potência quase nunca existe
@@ -295,6 +303,12 @@ function StravaSection({ userId }: { userId: string }) {
     load();
   }, [load]);
 
+  // FC máxima estimada do próprio histórico do atleta — é o que dá pra
+  // usar sem pedir nenhum dado extra (idade, FC de repouso) antes da
+  // feature funcionar. null enquanto não houver nenhuma atividade com
+  // max_heartrate ainda sincronizada.
+  const maxHeartrate = useMemo(() => estimateMaxHeartrate(activities), [activities]);
+
   if (!isStravaConfigured()) return null;
 
   const handleConnect = async () => {
@@ -354,16 +368,28 @@ function StravaSection({ userId }: { userId: string }) {
             <Text style={styles.stravaConnectedText}>Conectado ✓</Text>
             <Button label="Sincronizar" variant="ghost" onPress={handleSync} loading={isSyncing} style={styles.syncButton} />
           </View>
+          {activities.length > 0 ? <TrainingLoadCard activities={activities} maxHeartrate={maxHeartrate} /> : null}
           {activities.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma atividade sincronizada ainda — toque em "Sincronizar".</Text>
           ) : (
             activities.map((a) => {
               const enduranceLine = enduranceMetricsLine(a);
+              const zone =
+                a.averageHeartrate != null && maxHeartrate != null
+                  ? classifyZone(a.averageHeartrate, maxHeartrate)
+                  : null;
               return (
                 <View key={a.id} style={styles.historyRow}>
-                  <Text style={styles.historyDate}>
-                    {activityTypeLabel(a.sportType)} · {new Date(a.startedAt).toLocaleDateString('pt-BR')}
-                  </Text>
+                  <View style={styles.historyDateRow}>
+                    <Text style={styles.historyDate}>
+                      {activityTypeLabel(a.sportType)} · {new Date(a.startedAt).toLocaleDateString('pt-BR')}
+                    </Text>
+                    {zone != null ? (
+                      <Text style={styles.zoneBadge}>
+                        Z{zone} · {zoneLabel(zone)}
+                      </Text>
+                    ) : null}
+                  </View>
                   <Text style={styles.historyValues}>
                     {formatDistance(a.distanceMeters)} · {formatDuration(a.movingTimeSeconds)}
                     {a.calories != null ? ` · ${Math.round(a.calories)} kcal` : ''}
@@ -377,6 +403,64 @@ function StravaSection({ userId }: { userId: string }) {
         </>
       )}
     </>
+  );
+}
+
+const RISK_COLORS: Record<string, string> = {
+  ideal: colors.success,
+  atencao: colors.warning,
+  alto: colors.danger,
+  baixa: colors.steel,
+};
+
+// Carga semanal (TRIMP simplificado) + ACWR — ver src/lib/trainingLoad.ts
+// pro raciocínio completo. `maxHeartrate` null quando nenhuma atividade
+// ainda trouxe max_heartrate (ex.: todas sincronizadas antes dessa coluna
+// existir) — mostra uma dica em vez de tentar calcular sem base nenhuma.
+function TrainingLoadCard({ activities, maxHeartrate }: { activities: StravaActivity[]; maxHeartrate: number | null }) {
+  if (maxHeartrate == null) {
+    return (
+      <View style={styles.loadCard}>
+        <Text style={styles.emptyText}>
+          Assim que uma atividade trouxer frequência cardíaca máxima, a carga de treino semanal aparece aqui.
+        </Text>
+      </View>
+    );
+  }
+
+  const weeks = weeklyLoadSummary(activities, maxHeartrate);
+  const thisWeek = weeks[weeks.length - 1] ?? null;
+  const lastWeek = weeks[weeks.length - 2] ?? null;
+  const acwr = acuteChronicRatio(activities, maxHeartrate);
+
+  const trendPct =
+    thisWeek && lastWeek && lastWeek.totalLoad > 0
+      ? Math.round(((thisWeek.totalLoad - lastWeek.totalLoad) / lastWeek.totalLoad) * 100)
+      : null;
+
+  const sportBreakdown = thisWeek
+    ? Object.entries(thisWeek.loadBySport)
+        .sort((a, b) => b[1] - a[1])
+        .map(([sport, load]) => `${activityTypeLabel(sport)}: ${Math.round(load)}`)
+        .join(' · ')
+    : '';
+
+  return (
+    <View style={styles.loadCard}>
+      <View style={styles.loadHeaderRow}>
+        <View>
+          <Text style={styles.loadValue}>{thisWeek ? Math.round(thisWeek.totalLoad) : 0}</Text>
+          <Text style={styles.loadLabel}>carga esta semana</Text>
+        </View>
+        {trendPct != null ? (
+          <Text style={[styles.loadTrend, { color: trendPct > 0 ? colors.warning : colors.success }]}>
+            {trendPct > 0 ? '↑' : '↓'} {Math.abs(trendPct)}% vs. semana passada
+          </Text>
+        ) : null}
+      </View>
+      <Text style={[styles.loadRisk, { color: RISK_COLORS[acwr.risk] }]}>{LOAD_RISK_LABELS[acwr.risk]}</Text>
+      {sportBreakdown ? <Text style={styles.historyValues}>{sportBreakdown}</Text> : null}
+    </View>
   );
 }
 
@@ -424,7 +508,9 @@ const styles = StyleSheet.create({
     padding: spacing.sm + 4,
     marginBottom: spacing.sm,
   },
-  historyDate: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, letterSpacing: 1, marginBottom: 4 },
+  historyDateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  historyDate: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, letterSpacing: 1 },
+  zoneBadge: { fontFamily: typography.mono, fontSize: 10, color: colors.steel, letterSpacing: 1 },
   historyValues: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted },
   historyMetrics: {
     fontFamily: typography.bodySemiBold,
@@ -432,6 +518,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: 4,
   },
+  loadCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.md,
+  },
+  loadHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  loadValue: { fontFamily: typography.display, fontSize: 28, color: colors.textPrimary },
+  loadLabel: { fontFamily: typography.mono, fontSize: 10, color: colors.steel, letterSpacing: 1 },
+  loadTrend: { fontFamily: typography.bodySemiBold, fontSize: 12 },
+  loadRisk: { fontFamily: typography.bodySemiBold, fontSize: 12, marginTop: spacing.xs, marginBottom: 4 },
   stravaHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

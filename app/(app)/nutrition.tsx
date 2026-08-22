@@ -28,6 +28,10 @@ import {
   todayIsoDate,
   upsertGoals,
 } from '../../src/lib/nutrition';
+import { listHealthEntries } from '../../src/lib/health';
+import { listStravaActivities } from '../../src/lib/strava';
+import { listRecentLogs } from '../../src/lib/workouts';
+import { computePerformanceTargets, estimateTodayTrainingMinutes, TIER_LABELS } from '../../src/lib/performanceNutrition';
 
 const WATER_QUICK_ADD = [200, 300, 500];
 
@@ -183,6 +187,8 @@ export default function Nutrition() {
 
       <MacrosCard totals={totals} goals={goals} />
 
+      <PerformanceTargetCard userId={user.id} />
+
       <Text style={styles.sectionTitle}>Refeições de hoje</Text>
       {isLoading ? (
         <Text style={styles.emptyText}>Carregando…</Text>
@@ -223,6 +229,72 @@ export default function Nutrition() {
         acompanha o total do dia, sem comparar com uma meta.
       </Text>
     </ScrollView>
+  );
+}
+
+// Sugestão de fueling do dia — ver src/lib/performanceNutrition.ts. NUNCA
+// sobrescreve a meta manual (NutritionGoals) — é um complemento que muda
+// com o treino do dia, não uma substituição da meta fixa que o atleta
+// configurou. Busca peso (Health), minutos de Strava e treino de força de
+// hoje de forma independente, cada fetch com sua própria falha silenciosa
+// — a sugestão só aparece quando dá pra calcular algo de verdade.
+function PerformanceTargetCard({ userId }: { userId: string }) {
+  const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [todayMinutes, setTodayMinutes] = useState(0);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const today = todayIsoDate();
+    (async () => {
+      try {
+        const [entries, activities, logs] = await Promise.all([
+          listHealthEntries(userId).catch(() => []),
+          listStravaActivities(userId).catch(() => []),
+          listRecentLogs(userId, 1).catch(() => []),
+        ]);
+        if (!active) return;
+
+        const latestWeight = entries.find((e) => e.weightKg != null)?.weightKg ?? null;
+        const todayStravaMinutes = activities
+          .filter((a) => a.startedAt.slice(0, 10) === today)
+          .reduce((sum, a) => sum + (a.movingTimeSeconds ?? 0), 0) / 60;
+        const hasCompletedStrengthToday = logs.some((l) => l.logDate === today && l.completed);
+
+        setWeightKg(latestWeight);
+        setTodayMinutes(estimateTodayTrainingMinutes(todayStravaMinutes, hasCompletedStrengthToday));
+      } finally {
+        if (active) setIsReady(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  if (!isReady || weightKg == null) return null;
+
+  const targets = computePerformanceTargets(weightKg, todayMinutes);
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeaderRow}>
+        <Feather name="zap" size={16} color={colors.ignition} />
+        <Text style={styles.cardTitle}>Sugestão de hoje ({TIER_LABELS[targets.tier]})</Text>
+      </View>
+      <Text style={styles.performanceRow}>
+        Carboidrato: <Text style={styles.performanceValue}>{targets.carbsG}g</Text> · Proteína:{' '}
+        <Text style={styles.performanceValue}>{targets.proteinG}g</Text> · Gordura:{' '}
+        <Text style={styles.performanceValue}>{targets.fatG}g</Text>
+      </Text>
+      <Text style={styles.performanceRow}>
+        ≈ {targets.calories} kcal · {targets.waterMl}ml de água (inclui reposição do treino)
+      </Text>
+      <Text style={styles.performanceHint}>
+        Baseado no seu peso e no volume de treino de hoje — ajusta o carboidrato pra cima ou pra baixo
+        conforme o dia, sem mexer na sua meta fixa.
+      </Text>
+    </View>
   );
 }
 
@@ -439,6 +511,9 @@ const styles = StyleSheet.create({
   },
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.sm },
   cardTitle: { fontFamily: typography.bodySemiBold, fontSize: 14, color: colors.textPrimary, marginLeft: 6 },
+  performanceRow: { fontFamily: typography.body, fontSize: 13, color: colors.textPrimary, marginTop: 4 },
+  performanceValue: { fontFamily: typography.bodySemiBold, color: colors.ignition },
+  performanceHint: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 },
   waterValue: { fontFamily: typography.display, fontSize: 28, color: colors.textPrimary },
   waterGoal: { fontFamily: typography.body, fontSize: 14, color: colors.textMuted },
   progressTrack: {

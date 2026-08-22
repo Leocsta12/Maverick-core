@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, spacing, typography, radius } from '../../src/theme/tokens';
@@ -44,6 +45,9 @@ import {
 import { computeReadiness } from '../../src/lib/readiness';
 import { getRecentAverageRpe } from '../../src/lib/workouts';
 import { detectDeloadStatus } from '../../src/lib/periodization';
+import { detectBrickSessions } from '../../src/lib/brickWorkouts';
+import { computeTaperStatus, type TaperPhase } from '../../src/lib/taper';
+import { deleteRace, getNextRace, RACE_SPORTS, raceSportLabel, upsertRace, type RaceSport, type UpcomingRace } from '../../src/lib/races';
 
 // Segunda linha da atividade, com a métrica que realmente importa pra cada
 // esporte — pace não diz nada pra quem pedala, potência quase nunca existe
@@ -211,6 +215,8 @@ export default function Health() {
 
       {user ? <ReadinessCard userId={user.id} recoveryScore={score} /> : null}
 
+      {user ? <RaceTaperCard userId={user.id} /> : null}
+
       <Text style={styles.sectionTitle}>Registrar hoje</Text>
       <TextField
         label="Sono (horas)"
@@ -338,6 +344,144 @@ function ReadinessCard({ userId, recoveryScore }: { userId: string; recoveryScor
   );
 }
 
+const TAPER_PHASE_COLORS: Record<TaperPhase, string> = {
+  fora_do_taper: colors.textPrimary,
+  inicio_taper: colors.textPrimary,
+  taper_avancado: colors.warning,
+  semana_prova: colors.ignition,
+  dia_prova: colors.ignition,
+  prova_concluida: colors.steel,
+};
+
+// Próxima prova + taper — ver src/lib/taper.ts. Única peça de dado nova
+// dessa fase toda (data da prova não dá pra derivar de nada existente).
+function RaceTaperCard({ userId }: { userId: string }) {
+  const [race, setRace] = useState<UpcomingRace | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      setRace(await getNextRace(userId));
+    } catch {
+      // Silencioso — não deve travar o resto da tela de Health por causa disso.
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (isLoading) return null;
+
+  if (!race || isEditing) {
+    return (
+      <RaceForm
+        userId={userId}
+        existing={race}
+        onSaved={async () => {
+          setIsEditing(false);
+          await load();
+        }}
+        onCancel={race ? () => setIsEditing(false) : undefined}
+      />
+    );
+  }
+
+  const status = computeTaperStatus(race.raceDate);
+
+  return (
+    <View style={styles.raceCard}>
+      <View style={styles.raceHeaderRow}>
+        <Text style={styles.scoreLabel}>PRÓXIMA PROVA</Text>
+        <Pressable onPress={() => setIsEditing(true)} hitSlop={8}>
+          <Feather name="edit-2" size={14} color={colors.steel} />
+        </Pressable>
+      </View>
+      <Text style={styles.raceName}>
+        {race.name || raceSportLabel(race.sport)} · {raceSportLabel(race.sport)}
+      </Text>
+      <Text style={[styles.raceDays, { color: TAPER_PHASE_COLORS[status.phase] }]}>
+        {status.daysUntilRace >= 0 ? `${status.daysUntilRace} dia(s)` : 'já realizada'}
+      </Text>
+      <Text style={styles.insightText}>{status.message}</Text>
+    </View>
+  );
+}
+
+function RaceForm({
+  userId,
+  existing,
+  onSaved,
+  onCancel,
+}: {
+  userId: string;
+  existing: UpcomingRace | null;
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const [name, setName] = useState(existing?.name ?? '');
+  const [sport, setSport] = useState<RaceSport>(existing?.sport ?? 'triatlo');
+  const [raceDate, setRaceDate] = useState(existing?.raceDate ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raceDate.trim())) {
+      showAlert('Data inválida', 'Use o formato aaaa-mm-dd, ex: 2026-11-15.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await upsertRace(userId, existing?.id ?? null, { name, sport, raceDate: raceDate.trim() });
+      onSaved();
+    } catch {
+      showAlert('Não foi possível salvar a prova.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!existing) return;
+    showAlert('Remover essa prova?', undefined, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Remover',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteRace(existing.id);
+          onSaved();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <View style={styles.raceCard}>
+      <Text style={styles.scoreLabel}>{existing ? 'EDITAR PRÓXIMA PROVA' : 'PRÓXIMA PROVA'}</Text>
+      <TextField label="Nome (opcional)" value={name} onChangeText={setName} placeholder="Ex: Ironman 70.3" />
+      <View style={styles.levelRow}>
+        {RACE_SPORTS.map((opt) => (
+          <Pressable
+            key={opt.value}
+            onPress={() => setSport(opt.value)}
+            style={[styles.levelPill, sport === opt.value && styles.levelPillSelected]}
+          >
+            <Text style={[styles.levelPillText, sport === opt.value && styles.levelPillTextSelected]}>{opt.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextField label="Data da prova (aaaa-mm-dd)" value={raceDate} onChangeText={setRaceDate} placeholder="2026-11-15" />
+      <Button label="Salvar" onPress={handleSave} loading={isSaving} style={{ marginTop: spacing.xs }} />
+      {onCancel ? <Button label="Cancelar" variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} /> : null}
+      {existing ? <Button label="Remover prova" variant="ghost" onPress={handleDelete} style={{ marginTop: spacing.sm }} /> : null}
+    </View>
+  );
+}
+
 function StravaSection({ userId }: { userId: string }) {
   const [status, setStatus] = useState<StravaStatus>({ connected: false });
   const [activities, setActivities] = useState<StravaActivity[]>([]);
@@ -428,6 +572,7 @@ function StravaSection({ userId }: { userId: string }) {
             <Button label="Sincronizar" variant="ghost" onPress={handleSync} loading={isSyncing} style={styles.syncButton} />
           </View>
           {activities.length > 0 ? <TrainingLoadCard activities={activities} maxHeartrate={maxHeartrate} /> : null}
+          {activities.length > 0 ? <BrickSessionsCard activities={activities} /> : null}
           {activities.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma atividade sincronizada ainda — toque em "Sincronizar".</Text>
           ) : (
@@ -539,6 +684,30 @@ function DeloadHint({ weeks, acwrRisk }: { weeks: WeeklyLoad[]; acwrRisk: LoadRi
   );
 }
 
+// Treinos brick (bike+corrida, natação+bike, ou o tri completo) — ver
+// src/lib/brickWorkouts.ts. Detectado automaticamente em cima das
+// atividades já sincronizadas, sem nenhum registro manual extra.
+function BrickSessionsCard({ activities }: { activities: StravaActivity[] }) {
+  const sessions = detectBrickSessions(activities);
+  if (sessions.length === 0) return null;
+
+  const recent = [...sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 5);
+
+  return (
+    <View style={styles.brickCard}>
+      <Text style={styles.scoreLabel}>TREINOS BRICK DETECTADOS</Text>
+      {recent.map((session, i) => (
+        <View key={i} style={styles.brickRow}>
+          <Text style={styles.brickTitle}>{session.sports.map((s) => activityTypeLabel(s)).join(' → ')}</Text>
+          <Text style={styles.brickMeta}>
+            {new Date(session.startedAt).toLocaleDateString('pt-BR')} · {formatDuration(session.totalMinutes * 60)} total
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   eyebrow: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, letterSpacing: 2 },
   title: { fontFamily: typography.display, fontSize: 24, color: colors.textPrimary, marginTop: 4, marginBottom: spacing.lg },
@@ -571,6 +740,41 @@ const styles = StyleSheet.create({
   },
   readinessHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   readinessValue: { fontFamily: typography.display, fontSize: 22, color: colors.textPrimary },
+  raceCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  raceHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
+  raceName: { fontFamily: typography.bodySemiBold, fontSize: 15, color: colors.textPrimary, marginTop: spacing.xs },
+  raceDays: { fontFamily: typography.display, fontSize: 20, marginTop: 2 },
+  levelRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, marginBottom: spacing.md },
+  levelPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  levelPillSelected: { borderColor: colors.ignition, backgroundColor: colors.ignitionMuted },
+  levelPillText: { fontFamily: typography.bodyMedium, fontSize: 12, color: colors.textMuted },
+  levelPillTextSelected: { color: colors.ignition },
+  brickCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.md,
+  },
+  brickRow: { marginTop: spacing.xs },
+  brickTitle: { fontFamily: typography.bodyMedium, fontSize: 13, color: colors.textPrimary },
+  brickMeta: { fontFamily: typography.mono, fontSize: 11, color: colors.steel, marginTop: 2 },
   sectionTitle: {
     fontFamily: typography.bodySemiBold,
     fontSize: 15,

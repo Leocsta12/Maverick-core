@@ -1249,3 +1249,54 @@ drop policy if exists "strava_activities: select as admin" on public.strava_acti
 create policy "strava_activities: select as admin"
   on public.strava_activities for select
   using (public.is_app_admin());
+
+-- Maverick Core — schema do módulo Brick/Taper (Fase "Coach de endurance")
+--
+-- Única peça de dado nova de toda essa fase (brick em si é detectado
+-- automaticamente em cima do que o Strava já sincroniza — ver
+-- src/lib/brickWorkouts.ts) — o taper precisa saber QUANDO é a prova, e
+-- isso não dá pra derivar de nada que já existe.
+create table if not exists public.upcoming_races (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null default '',
+  sport text not null default 'triatlo',
+  race_date date not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.upcoming_races enable row level security;
+
+drop policy if exists "upcoming_races: select own or as coach" on public.upcoming_races;
+create policy "upcoming_races: select own or as coach"
+  on public.upcoming_races for select
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.coach_links cl
+      where cl.coach_id = auth.uid() and cl.athlete_id = upcoming_races.user_id and cl.status = 'accepted'
+    )
+  );
+
+drop policy if exists "upcoming_races: insert own" on public.upcoming_races;
+create policy "upcoming_races: insert own"
+  on public.upcoming_races for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "upcoming_races: update own" on public.upcoming_races;
+create policy "upcoming_races: update own"
+  on public.upcoming_races for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "upcoming_races: delete own" on public.upcoming_races;
+create policy "upcoming_races: delete own"
+  on public.upcoming_races for delete
+  using (auth.uid() = user_id);
+
+create index if not exists upcoming_races_user_date_idx on public.upcoming_races (user_id, race_date);
+
+drop policy if exists "upcoming_races: select as admin" on public.upcoming_races;
+create policy "upcoming_races: select as admin"
+  on public.upcoming_races for select
+  using (public.is_app_admin());

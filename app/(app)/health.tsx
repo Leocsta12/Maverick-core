@@ -39,9 +39,11 @@ import {
   weeklyLoadSummary,
   zoneLabel,
   type LoadRisk,
+  type WeeklyLoad,
 } from '../../src/lib/trainingLoad';
 import { computeReadiness } from '../../src/lib/readiness';
 import { getRecentAverageRpe } from '../../src/lib/workouts';
+import { detectDeloadStatus } from '../../src/lib/periodization';
 
 // Segunda linha da atividade, com a métrica que realmente importa pra cada
 // esporte — pace não diz nada pra quem pedala, potência quase nunca existe
@@ -516,7 +518,24 @@ function TrainingLoadCard({ activities, maxHeartrate }: { activities: StravaActi
       </View>
       <Text style={[styles.loadRisk, { color: RISK_COLORS[acwr.risk] }]}>{LOAD_RISK_LABELS[acwr.risk]}</Text>
       {sportBreakdown ? <Text style={styles.historyValues}>{sportBreakdown}</Text> : null}
+      <DeloadHint weeks={weeks} acwrRisk={acwr.risk} />
     </View>
+  );
+}
+
+// Periodização — ver src/lib/periodization.ts. Reaproveita as mesmas
+// semanas já calculadas pelo card de carga, sem consulta nova nenhuma.
+function DeloadHint({ weeks, acwrRisk }: { weeks: WeeklyLoad[]; acwrRisk: LoadRisk }) {
+  const status = detectDeloadStatus(
+    weeks.map((w) => ({ weekStartIso: w.weekStartIso, totalLoad: w.totalLoad })),
+    acwrRisk
+  );
+  if (status.weeksSinceLastDeload == null) return null;
+  return (
+    <Text style={[styles.deloadHint, status.recommended && { color: colors.warning }]}>
+      {status.recommended ? '⚠ ' : ''}
+      {status.message}
+    </Text>
   );
 }
 
@@ -597,6 +616,7 @@ const styles = StyleSheet.create({
   loadLabel: { fontFamily: typography.mono, fontSize: 10, color: colors.steel, letterSpacing: 1 },
   loadTrend: { fontFamily: typography.bodySemiBold, fontSize: 12 },
   loadRisk: { fontFamily: typography.bodySemiBold, fontSize: 12, marginTop: spacing.xs, marginBottom: 4 },
+  deloadHint: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 16 },
   stravaHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -42,6 +42,7 @@ import {
 import { currentAndPreviousWeek } from '../lib/trainingLoad';
 import { parseRepsTarget, suggestProgression, type OverloadSuggestion } from '../lib/progressiveOverload';
 import { volumeTier, VOLUME_TIER_LABELS, weeklyVolumeByMuscleGroup } from '../lib/muscleVolume';
+import { detectDeloadStatus } from '../lib/periodization';
 
 function dateForDayOfWeek(dayOfWeek: number): string {
   const now = new Date();
@@ -369,7 +370,22 @@ function MuscleVolumeCard({ athleteUserId }: { athleteUserId: string }) {
 
   const weeks = weeklyVolumeByMuscleGroup(entries);
   const { thisWeek } = currentAndPreviousWeek(weeks);
-  if (!thisWeek) return null;
+
+  // Periodização usa o HISTÓRICO inteiro (não só a semana atual) — dá pra
+  // saber "há quantas semanas sem deload" mesmo numa semana ainda vazia.
+  const totalWeeklySets = weeks.map((w) => ({
+    weekStartIso: w.weekStartIso,
+    totalLoad: Object.values(w.setsByMuscle).reduce((sum, n) => sum + n, 0),
+  }));
+  const deloadStatus = detectDeloadStatus(totalWeeklySets);
+
+  if (!thisWeek) {
+    return deloadStatus.weeksSinceLastDeload != null ? (
+      <View style={styles.volumeCard}>
+        <DeloadHintText status={deloadStatus} />
+      </View>
+    ) : null;
+  }
 
   const rows = Object.entries(thisWeek.setsByMuscle).sort((a, b) => b[1] - a[1]);
 
@@ -386,7 +402,18 @@ function MuscleVolumeCard({ athleteUserId }: { athleteUserId: string }) {
           </View>
         );
       })}
+      <DeloadHintText status={deloadStatus} />
     </View>
+  );
+}
+
+function DeloadHintText({ status }: { status: ReturnType<typeof detectDeloadStatus> }) {
+  if (status.weeksSinceLastDeload == null) return null;
+  return (
+    <Text style={[styles.deloadHint, status.recommended && { color: colors.warning }]}>
+      {status.recommended ? '⚠ ' : ''}
+      {status.message}
+    </Text>
   );
 }
 
@@ -894,6 +921,7 @@ const styles = StyleSheet.create({
   volumeMuscle: { fontFamily: typography.bodyMedium, fontSize: 13, color: colors.textPrimary, flex: 1 },
   volumeSets: { fontFamily: typography.mono, fontSize: 11, color: colors.textMuted },
   volumeTierText: { fontFamily: typography.body, fontSize: 11 },
+  deloadHint: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 },
   progressionHint: {
     flexDirection: 'row',
     alignItems: 'center',

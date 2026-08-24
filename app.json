@@ -46,6 +46,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "leocsta",
+    "extra": {
+      "eas": {
+        "projectId": "37d32610-0edd-4a1f-a573-5c93f9cf06fc"
+      }
     }
   }
 }

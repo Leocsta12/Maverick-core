@@ -19,7 +19,10 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0D0F11"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -47,10 +50,11 @@
     "experiments": {
       "typedRoutes": true
     },
-    "owner": "leocsta",
+    "owner": "leocstas-team",
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "37d32610-0edd-4a1f-a573-5c93f9cf06fc"
+        "projectId": "8b146d56-0577-4104-a9d1-64d956dfdbcb"
       }
     }
   }

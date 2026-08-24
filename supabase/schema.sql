@@ -606,10 +606,17 @@ create policy "exercises: insert own"
   on public.exercises for insert
   with check (auth.uid() = created_by);
 
+-- "own OR sem dono" — exercícios seedados (created_by null) ficam abertos
+-- pra qualquer usuário autenticado melhorar (anexar foto/vídeo, ajustar
+-- descrição), tipo wiki. Um exercício CRIADO por alguém específico
+-- continua travado só pra essa pessoa — a regra original nunca foi
+-- pensada pra bloquear edição do catálogo compartilhado, só pra evitar
+-- que um estranho mexa no exercício custom de outro usuário.
 drop policy if exists "exercises: update own" on public.exercises;
-create policy "exercises: update own"
+drop policy if exists "exercises: update own or unclaimed" on public.exercises;
+create policy "exercises: update own or unclaimed"
   on public.exercises for update
-  using (auth.uid() = created_by);
+  using (auth.uid() = created_by or created_by is null);
 
 drop policy if exists "exercises: delete own" on public.exercises;
 create policy "exercises: delete own"

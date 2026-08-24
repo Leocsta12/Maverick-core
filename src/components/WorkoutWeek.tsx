@@ -524,6 +524,7 @@ function DayDetail({
             canLog={isAthleteViewingSelf && !!logId}
             logId={logId}
             onRemoved={onExercisesChanged}
+            onMediaChanged={onExercisesChanged}
           />
         ))
       )}
@@ -564,12 +565,14 @@ function ExerciseRow({
   canLog,
   logId,
   onRemoved,
+  onMediaChanged,
 }: {
   planExercise: WorkoutPlanExercise;
   canEditPlan: boolean;
   canLog: boolean;
   logId: string | null;
   onRemoved: () => void;
+  onMediaChanged: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { exercise } = planExercise;
@@ -616,6 +619,8 @@ function ExerciseRow({
           ) : null}
           {planExercise.notes ? <Text style={styles.exerciseDescription}>Obs: {planExercise.notes}</Text> : null}
 
+          {canEditPlan ? <ExerciseMediaEditor exercise={exercise} onChanged={onMediaChanged} /> : null}
+
           {canLog && logId ? (
             <>
               <ProgressionHint exerciseId={exercise.id} muscleGroup={exercise.muscleGroup} targetReps={planExercise.reps} />
@@ -624,6 +629,68 @@ function ExerciseRow({
           ) : null}
         </View>
       )}
+    </View>
+  );
+}
+
+// Anexar foto/vídeo a um exercício do catálogo compartilhado — a lacuna
+// que faltava: as funções de upload já existiam (pickAndUploadExercisePhoto/
+// setExerciseVideoUrl, mais abaixo neste arquivo) mas nunca tinham um
+// botão de verdade em tela nenhuma. RLS trata exercício "sem dono" (da
+// carga inicial) como editável por qualquer autenticado — ver schema.sql.
+function ExerciseMediaEditor({ exercise, onChanged }: { exercise: Exercise; onChanged: () => void }) {
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [videoUrl, setVideoUrl] = useState(exercise.videoUrl ?? '');
+  const [isSavingVideo, setIsSavingVideo] = useState(false);
+
+  useEffect(() => {
+    setVideoUrl(exercise.videoUrl ?? '');
+  }, [exercise.id, exercise.videoUrl]);
+
+  const handlePickPhoto = async () => {
+    setIsUploadingPhoto(true);
+    try {
+      await pickAndUploadExercisePhoto(exercise.id);
+      onChanged();
+    } catch (err) {
+      showAlert(err instanceof Error && err.message === 'Permissão negada.' ? 'Permita o acesso às fotos pra anexar uma imagem.' : 'Não foi possível enviar a foto agora.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveVideo = async () => {
+    setIsSavingVideo(true);
+    try {
+      await setExerciseVideoUrl(exercise.id, videoUrl);
+      onChanged();
+    } catch {
+      showAlert('Não foi possível salvar o link do vídeo.');
+    } finally {
+      setIsSavingVideo(false);
+    }
+  };
+
+  return (
+    <View style={styles.mediaEditor}>
+      <Text style={styles.mediaEditorTitle}>AJUDAR OUTROS COM MÍDIA</Text>
+      <Button
+        label={exercise.photoUrl ? 'Trocar foto' : 'Adicionar foto'}
+        variant="ghost"
+        onPress={handlePickPhoto}
+        loading={isUploadingPhoto}
+        style={styles.smallButton}
+      />
+      <View style={styles.mediaVideoRow}>
+        <TextField
+          label=""
+          value={videoUrl}
+          onChangeText={setVideoUrl}
+          placeholder="Link do vídeo de execução (YouTube etc.)"
+          style={{ flex: 1, marginBottom: 0 }}
+        />
+        <Button label="Salvar" variant="ghost" onPress={handleSaveVideo} loading={isSavingVideo} style={styles.mediaVideoSaveButton} />
+      </View>
     </View>
   );
 }
@@ -937,6 +1004,10 @@ const styles = StyleSheet.create({
   setInput: { flex: 1, marginBottom: spacing.xs },
   setLoggerActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   smallButton: { flex: 1, paddingVertical: spacing.sm },
+  mediaEditor: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  mediaEditorTitle: { fontFamily: typography.mono, fontSize: 10, color: colors.steel, letterSpacing: 1.5, marginBottom: spacing.xs },
+  mediaVideoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginTop: spacing.xs },
+  mediaVideoSaveButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   addForm: {
     marginTop: spacing.md,
     paddingTop: spacing.md,

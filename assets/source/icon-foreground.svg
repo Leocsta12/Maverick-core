@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 240 240" role="img">
+  <title>Maverick Performance (foreground)</title>
+  <defs>
+    <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF8A54"/>
+      <stop offset="1" stop-color="#E64A15"/>
+    </linearGradient>
+    <filter id="mShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <!-- Escalado a 75% em volta do centroide visual (120,139) — mantém a
+       marca dentro da "safe zone" central (~66%) que o Android usa pra
+       recortar o ícone adaptativo em máscaras agressivas (círculo). -->
+  <g transform="translate(120,139) scale(0.75) translate(-120,-139)">
+    <g filter="url(#mShadow)">
+      <path d="M 62 148 L 62 68 L 84 68 L 120 112 L 156 68 L 178 68 L 178 148 L 156 148 L 156 100 L 128 134 L 112 134 L 84 100 L 84 148 Z" fill="url(#mGrad)"/>
+    </g>
+    <path d="M 46 176 A 96 96 0 0 1 194 176" fill="none" stroke="#7C8791" stroke-width="6" stroke-linecap="round" opacity="0.3"/>
+    <path d="M 46 176 A 96 96 0 0 1 145 208" fill="none" stroke="url(#mGrad)" stroke-width="6" stroke-linecap="round"/>
+    <line x1="46" y1="176" x2="52" y2="164" stroke="#7C8791" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <line x1="194" y1="176" x2="188" y2="164" stroke="#7C8791" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="145" cy="208" r="8" fill="url(#mGrad)"/>
+  </g>
+</svg>

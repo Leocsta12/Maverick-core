@@ -1,0 +1,587 @@
+<title>Privacidade Maverick</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FAF8F4;
+    --surface: #FFFFFF;
+    --surface-sunken: #F2F0EA;
+    --border: #E4E0D6;
+    --text: #1C1A16;
+    --text-muted: #6B6559;
+    --accent: #C43D10;
+    --accent-bg: rgba(230, 74, 21, 0.08);
+    --accent-strong: #FF5A1F;
+    --danger: #B23A3A;
+
+    --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0D0F11;
+      --surface: #16191C;
+      --surface-sunken: #111315;
+      --border: #272C31;
+      --text: #F3F1EC;
+      --text-muted: #9AA1A6;
+      --accent: #FF8A54;
+      --accent-bg: rgba(255, 90, 31, 0.14);
+      --accent-strong: #FF5A1F;
+      --danger: #FF8A8A;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0D0F11;
+    --surface: #16191C;
+    --surface-sunken: #111315;
+    --border: #272C31;
+    --text: #F3F1EC;
+    --text-muted: #9AA1A6;
+    --accent: #FF8A54;
+    --accent-bg: rgba(255, 90, 31, 0.14);
+    --accent-strong: #FF5A1F;
+    --danger: #FF8A8A;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+  }
+
+  header.masthead {
+    margin-bottom: 48px;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .eyebrow .mark {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--accent-strong);
+    display: inline-block;
+    transform: rotate(45deg);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 14px 0 12px;
+    text-wrap: balance;
+  }
+
+  .dek {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    max-width: 58ch;
+    margin: 0 0 24px;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  .meta-chip {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+
+  .lede {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-strong);
+    border-radius: 4px;
+    padding: 20px 22px;
+    margin: 32px 0 8px;
+    font-size: 0.98rem;
+    color: var(--text);
+  }
+  .lede strong { color: var(--text); }
+
+  nav.toc {
+    margin: 40px 0 56px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    padding: 22px 24px;
+  }
+
+  nav.toc .toc-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+  }
+
+  nav.toc li a {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.92rem;
+    padding: 2px 0;
+    border-bottom: 1px solid transparent;
+  }
+  nav.toc li a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  nav.toc li a .n {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  section.article {
+    margin: 0 0 44px;
+    padding-top: 8px;
+    scroll-margin-top: 24px;
+  }
+
+  section.article + section.article {
+    border-top: 1px solid var(--border);
+    padding-top: 40px;
+  }
+
+  .h2-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .h2-num {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.4rem;
+    letter-spacing: -0.005em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 1.05rem;
+    margin: 26px 0 10px;
+  }
+
+  p { margin: 0 0 16px; max-width: 68ch; }
+  p:last-child { margin-bottom: 0; }
+
+  ul, ol.plain { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+  li { margin-bottom: 8px; }
+  li:last-child { margin-bottom: 0; }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0 20px;
+    font-size: 0.92rem;
+  }
+  .data-table-wrap { overflow-x: auto; margin: 4px 0 20px; }
+  .data-table th, .data-table td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .data-table th {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .data-table td.muted { color: var(--text-muted); }
+
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+    margin: 4px 0 20px;
+  }
+  .provider-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .provider-card .name {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .provider-card .role {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+  }
+
+  .callout {
+    background: var(--accent-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-size: 0.92rem;
+    margin: 4px 0 20px;
+  }
+  .callout strong { color: var(--text); }
+
+  .rights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 4px 0 8px;
+  }
+  .right-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--surface);
+    font-size: 0.9rem;
+  }
+  .right-item .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  footer.contact {
+    margin-top: 56px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  footer.contact .block .k {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  footer.contact .block .v {
+    font-size: 0.95rem;
+  }
+  footer.contact a { color: var(--accent); text-decoration: none; }
+  footer.contact a:hover { text-decoration: underline; }
+
+  a.inline { color: var(--accent); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+  a.inline:hover { text-decoration-color: var(--accent); }
+
+  @media (max-width: 560px) {
+    nav.toc ol { grid-template-columns: 1fr; }
+    .wrap { padding: 40px 18px 72px; }
+  }
+
+  ::selection { background: var(--accent-bg); }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow"><span class="mark"></span> MAVERICK PERFORMANCE</div>
+    <h1>Política de Privacidade</h1>
+    <p class="dek">Como o Maverick Core coleta, usa e protege os seus dados de treino, saúde e nutrição — em linguagem direta, sem juridiquês desnecessário.</p>
+    <div class="meta-row">
+      <span class="meta-chip">Vigente desde 26/08/2026</span>
+      <span class="meta-chip">Versão 1.0</span>
+      <span class="meta-chip">Lei aplicável: LGPD (Lei 13.709/2018)</span>
+    </div>
+  </header>
+
+  <div class="lede">
+    <strong>Resumo rápido:</strong> guardamos os dados de saúde, treino e nutrição que você mesmo registra, usamos isso só pra calcular suas métricas e fazer o app funcionar, nunca vendemos seus dados, e você pode pedir a exclusão completa da sua conta a qualquer momento. Os detalhes de como cada coisa funciona estão abaixo.
+  </div>
+
+  <nav class="toc" aria-label="Sumário">
+    <div class="toc-title">Nesta política</div>
+    <ol>
+      <li><a href="#quem-somos"><span class="n">01</span> Quem somos</a></li>
+      <li><a href="#dados-coletados"><span class="n">02</span> Dados que coletamos</a></li>
+      <li><a href="#como-usamos"><span class="n">03</span> Como usamos seus dados</a></li>
+      <li><a href="#terceiros"><span class="n">04</span> Compartilhamento com terceiros</a></li>
+      <li><a href="#treinador"><span class="n">05</span> Compartilhamento com seu treinador</a></li>
+      <li><a href="#base-legal"><span class="n">06</span> Base legal (LGPD)</a></li>
+      <li><a href="#seguranca"><span class="n">07</span> Segurança</a></li>
+      <li><a href="#retencao"><span class="n">08</span> Retenção e exclusão</a></li>
+      <li><a href="#direitos"><span class="n">09</span> Seus direitos</a></li>
+      <li><a href="#menores"><span class="n">10</span> Menores de idade</a></li>
+      <li><a href="#alteracoes"><span class="n">11</span> Alterações nesta política</a></li>
+      <li><a href="#contato"><span class="n">12</span> Contato</a></li>
+    </ol>
+  </nav>
+
+  <section class="article" id="quem-somos">
+    <div class="h2-row"><span class="h2-num">01</span><h2>Quem somos</h2></div>
+    <p>
+      O Maverick Core (também chamado de Maverick Performance) é um aplicativo de acompanhamento de treino, saúde e nutrição pra atletas de musculação, corrida, pedal, natação e triatlo. Esta política descreve como tratamos os dados pessoais de quem usa o aplicativo — atletas e treinadores — em conformidade com a Lei Geral de Proteção de Dados (LGPD, Lei nº 13.709/2018).
+    </p>
+    <p>
+      Ao criar uma conta no Maverick Core, você concorda com as práticas descritas aqui. Se em algum momento você não concordar com alguma parte, pode encerrar sua conta e solicitar a exclusão dos seus dados a qualquer momento — veja a seção <a class="inline" href="#retencao">Retenção e exclusão</a>.
+    </p>
+  </section>
+
+  <section class="article" id="dados-coletados">
+    <div class="h2-row"><span class="h2-num">02</span><h2>Dados que coletamos</h2></div>
+    <p>Coletamos apenas o que é necessário pra calcular suas métricas e fazer o app funcionar. A tabela abaixo lista cada categoria de dado, de onde ele vem e pra que serve.</p>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Categoria</th><th>O que inclui</th><th>Origem</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cadastro</td>
+            <td class="muted">Nome, e-mail, senha (criptografada)</td>
+            <td class="muted">Você informa ao criar a conta</td>
+          </tr>
+          <tr>
+            <td>Saúde</td>
+            <td class="muted">Sono, HRV, frequência cardíaca de repouso, passos, peso, % de gordura corporal</td>
+            <td class="muted">Registro manual seu, no módulo Health</td>
+          </tr>
+          <tr>
+            <td>Treino</td>
+            <td class="muted">Exercícios, séries, repetições, carga, RPE, plano semanal</td>
+            <td class="muted">Registro seu ou gerado pela IA a seu pedido</td>
+          </tr>
+          <tr>
+            <td>Nutrição</td>
+            <td class="muted">Refeições, água, calorias e macronutrientes</td>
+            <td class="muted">Registro manual seu</td>
+          </tr>
+          <tr>
+            <td>Fotos de evolução</td>
+            <td class="muted">Fotos que você tira pra comparar progresso físico (Maverick Vision)</td>
+            <td class="muted">Upload seu, por opção — nunca obrigatório</td>
+          </tr>
+          <tr>
+            <td>Atividades esportivas</td>
+            <td class="muted">Distância, ritmo, potência, cadência, elevação, frequência cardíaca de corridas/pedais/natação</td>
+            <td class="muted">Sincronizado do Strava, só se você conectar sua conta</td>
+          </tr>
+          <tr>
+            <td>Provas e metas</td>
+            <td class="muted">Nome, esporte e data de provas futuras que você cadastra</td>
+            <td class="muted">Registro manual seu</td>
+          </tr>
+          <tr>
+            <td>Uso do aplicativo</td>
+            <td class="muted">Telas visitadas, ações realizadas (de forma agregada, não grava conteúdo digitado)</td>
+            <td class="muted">Coletado automaticamente</td>
+          </tr>
+          <tr>
+            <td>Diagnóstico técnico</td>
+            <td class="muted">Relatos de erro e travamento, versão do app, modelo do aparelho</td>
+            <td class="muted">Coletado automaticamente quando algo dá errado</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Reparou que "dados de saúde" e "fotos" estão nessa lista? A LGPD trata esse tipo de informação como <strong>dado sensível</strong>, e por isso cuidamos deles com atenção redobrada — nunca são usados pra fins publicitários, e você tem controle total sobre editá-los ou apagá-los a qualquer momento diretamente no app.
+    </p>
+  </section>
+
+  <section class="article" id="como-usamos">
+    <div class="h2-row"><span class="h2-num">02</span><h2>Como usamos seus dados</h2></div>
+    <ul>
+      <li>Calcular o Maverick Score, a Prontidão de Treino, zonas de frequência cardíaca, carga semanal e demais métricas do app.</li>
+      <li>Gerar planos de treino personalizados quando você usa o Maverick Coach IA.</li>
+      <li>Analisar fotos de evolução quando você usa o Maverick Vision, pra descrever mudanças visuais entre duas fotos.</li>
+      <li>Sincronizar suas atividades esportivas quando você conecta o Strava.</li>
+      <li>Mostrar seus dados ao treinador que você vincular à sua conta (veja a seção <a class="inline" href="#treinador">Compartilhamento com seu treinador</a>).</li>
+      <li>Identificar e corrigir erros técnicos do aplicativo.</li>
+      <li>Entender, de forma agregada, quais partes do app são mais usadas — pra decidir o que melhorar.</li>
+    </ul>
+    <p>Não usamos seus dados de saúde, treino ou nutrição para publicidade, e não os vendemos a terceiros em nenhuma hipótese.</p>
+  </section>
+
+  <section class="article" id="terceiros">
+    <div class="h2-row"><span class="h2-num">04</span><h2>Compartilhamento com terceiros</h2></div>
+    <p>
+      Usamos alguns prestadores de serviço especializados pra operar o app — cada um recebe só o dado estritamente necessário pra função dele, nunca o pacote completo da sua conta.
+    </p>
+
+    <div class="provider-grid">
+      <div class="provider-card">
+        <div class="name">Supabase</div>
+        <div class="role">Banco de dados e autenticação — onde todos os seus dados ficam armazenados</div>
+      </div>
+      <div class="provider-card">
+        <div class="name">Strava</div>
+        <div class="role">Sincronização de atividades esportivas, só se você conectar sua conta</div>
+      </div>
+      <div class="provider-card">
+        <div class="name">Anthropic (Claude)</div>
+        <div class="role">Geração de planos de treino e análise de fotos de evolução, quando você usa essas funções de IA</div>
+      </div>
+      <div class="provider-card">
+        <div class="name">Sentry</div>
+        <div class="role">Registro de erros técnicos, pra identificar e corrigir problemas do app</div>
+      </div>
+      <div class="provider-card">
+        <div class="name">PostHog</div>
+        <div class="role">Estatísticas de uso agregadas, pra entender o que funciona no app</div>
+      </div>
+      <div class="provider-card">
+        <div class="name">Resend</div>
+        <div class="role">Envio de e-mails do sistema (confirmação de conta, redefinição de senha)</div>
+      </div>
+    </div>
+
+    <p>Nenhum desses prestadores tem permissão pra usar seus dados pra fins próprios — eles processam a informação só pra entregar o serviço contratado pelo Maverick Core.</p>
+  </section>
+
+  <section class="article" id="treinador">
+    <div class="h2-row"><span class="h2-num">05</span><h2>Compartilhamento com seu treinador</h2></div>
+    <p>
+      Se você vincular sua conta a um treinador (e só depois que <strong>você aceitar</strong> o vínculo), ele passa a poder ver seus dados de saúde, treino, nutrição e atividades — é assim que ele consegue te acompanhar de verdade. O treinador também pode editar o seu plano de treino semanal.
+    </p>
+    <p>
+      Você pode desfazer esse vínculo a qualquer momento, e a partir daí o treinador perde o acesso imediatamente. O treinador nunca vê sua senha nem pode fazer login como você.
+    </p>
+  </section>
+
+  <section class="article" id="base-legal">
+    <div class="h2-row"><span class="h2-num">06</span><h2>Base legal (LGPD)</h2></div>
+    <p>Tratamos seus dados com base em:</p>
+    <ul>
+      <li><strong>Execução de contrato</strong> — pra fornecer as funcionalidades do app que você contratou ao criar uma conta.</li>
+      <li><strong>Consentimento</strong> — pra dados sensíveis de saúde e fotos, e pra integrações opcionais como Strava e IA, que você ativa por escolha própria.</li>
+      <li><strong>Legítimo interesse</strong> — pra estatísticas de uso agregadas e diagnóstico técnico, sempre de forma proporcional e sem impacto na sua privacidade individual.</li>
+    </ul>
+  </section>
+
+  <section class="article" id="seguranca">
+    <div class="h2-row"><span class="h2-num">07</span><h2>Segurança</h2></div>
+    <p>
+      Seus dados ficam protegidos por regras de acesso no banco de dados (Row Level Security) que garantem que só você — e, se aplicável, seu treinador vinculado — consegue ler suas informações. Senhas são armazenadas de forma criptografada e nunca ficam visíveis, nem pra nós.
+    </p>
+    <p>
+      Nenhum sistema é 100% imune a falhas, mas revisamos ativamente as regras de acesso do aplicativo pra fechar brechas assim que identificadas.
+    </p>
+  </section>
+
+  <section class="article" id="retencao">
+    <div class="h2-row"><span class="h2-num">08</span><h2>Retenção e exclusão</h2></div>
+    <p>
+      Mantemos seus dados enquanto sua conta estiver ativa. Você pode excluir registros individuais (uma refeição, uma foto, uma atividade) a qualquer momento direto no app.
+    </p>
+    <div class="callout">
+      <strong>Quer apagar sua conta inteira?</strong> Escreva pra <a class="inline" href="mailto:maverick@maverickperformance.club">maverick@maverickperformance.club</a> pedindo a exclusão. Processamos o pedido e removemos permanentemente todos os seus dados pessoais em até 30 dias, exceto o que formos legalmente obrigados a reter por mais tempo.
+    </div>
+  </section>
+
+  <section class="article" id="direitos">
+    <div class="h2-row"><span class="h2-num">09</span><h2>Seus direitos</h2></div>
+    <p>Como titular dos dados, a LGPD garante que você pode, a qualquer momento:</p>
+    <div class="rights-grid">
+      <div class="right-item"><div class="label">Confirmação</div>Saber se tratamos algum dado seu</div>
+      <div class="right-item"><div class="label">Acesso</div>Ver quais dados temos sobre você</div>
+      <div class="right-item"><div class="label">Correção</div>Pedir a correção de dados incompletos ou desatualizados</div>
+      <div class="right-item"><div class="label">Portabilidade</div>Solicitar seus dados em formato estruturado</div>
+      <div class="right-item"><div class="label">Eliminação</div>Pedir a exclusão de dados tratados com seu consentimento</div>
+      <div class="right-item"><div class="label">Revogação</div>Retirar o consentimento dado a qualquer momento</div>
+    </div>
+    <p>Pra exercer qualquer um desses direitos, escreva pra <a class="inline" href="mailto:maverick@maverickperformance.club">maverick@maverickperformance.club</a>.</p>
+  </section>
+
+  <section class="article" id="menores">
+    <div class="h2-row"><span class="h2-num">10</span><h2>Menores de idade</h2></div>
+    <p>
+      O Maverick Core não é direcionado a menores de 18 anos. Não coletamos intencionalmente dados de crianças ou adolescentes. Se você é responsável por um menor e acredita que ele criou uma conta, entre em contato pra que possamos excluí-la.
+    </p>
+  </section>
+
+  <section class="article" id="alteracoes">
+    <div class="h2-row"><span class="h2-num">11</span><h2>Alterações nesta política</h2></div>
+    <p>
+      Podemos atualizar esta política conforme o app evolui. Mudanças relevantes serão comunicadas dentro do próprio aplicativo antes de entrarem em vigor. A data no topo desta página sempre reflete a versão mais recente.
+    </p>
+  </section>
+
+  <footer class="contact" id="contato">
+    <div class="block">
+      <div class="k">Dúvidas sobre privacidade</div>
+      <div class="v"><a href="mailto:maverick@maverickperformance.club">maverick@maverickperformance.club</a></div>
+    </div>
+    <div class="block">
+      <div class="k">Aplicativo</div>
+      <div class="v">Maverick Performance</div>
+    </div>
+    <div class="block">
+      <div class="k">Documento</div>
+      <div class="v">Versão 1.0 — 26/08/2026</div>
+    </div>
+  </footer>
+
+</div>

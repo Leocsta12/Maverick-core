@@ -34,7 +34,7 @@ export default function Login() {
       if (result.error.includes('Confirme seu e-mail')) setNeedsConfirmation(true);
       return;
     }
-    router.replace('/dashboard');
+    router.replace('/'); // passa pelo gate de onboarding, não direto pro dashboard
   };
 
   const handleResend = async () => {

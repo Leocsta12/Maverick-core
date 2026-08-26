@@ -6,7 +6,9 @@ export default function AuthLayout() {
   const { user, isLoading } = useAuth();
 
   if (isLoading) return null;
-  if (user) return <Redirect href="/dashboard" />;
+  // Passa pela raiz (não direto pro dashboard) — é lá que mora o gate de
+  // "já viu o tour de onboarding?" antes de decidir pra onde ir de verdade.
+  if (user) return <Redirect href="/" />;
 
   return (
     <Stack

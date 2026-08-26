@@ -12,7 +12,7 @@ type Row = {
   icon: keyof typeof Feather.glyphMap;
   title: string;
   subtitle: string;
-  href: '/vision' | '/coach' | '/profile' | '/mission' | '/planner' | '/admin';
+  href: '/vision' | '/coach' | '/profile' | '/mission' | '/planner' | '/admin' | '/onboarding';
 };
 
 const ROWS: Row[] = [
@@ -20,6 +20,7 @@ const ROWS: Row[] = [
   { icon: 'check-square', title: 'Hábitos', subtitle: 'Checklist diário com sequência', href: '/mission' },
   { icon: 'camera', title: 'Vision', subtitle: 'Fotos de progresso e tendências', href: '/vision' },
   { icon: 'users', title: 'Coach', subtitle: 'Vínculo treinador ↔ atleta', href: '/coach' },
+  { icon: 'compass', title: 'Tour do app', subtitle: 'Reveja a explicação dos números do Maverick', href: '/onboarding' },
   { icon: 'user', title: 'Perfil', subtitle: 'Sua conta e preferências', href: '/profile' },
 ];
 

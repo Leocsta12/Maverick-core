@@ -43,7 +43,7 @@ export default function Signup() {
       setAwaitingConfirmation(true);
       return;
     }
-    router.replace('/dashboard');
+    router.replace('/'); // passa pelo gate de onboarding, não direto pro dashboard
   };
 
   if (awaitingConfirmation) {

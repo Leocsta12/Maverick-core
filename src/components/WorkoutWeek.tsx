@@ -22,6 +22,7 @@ import {
   addExercise,
   addExerciseToDay,
   dayOfWeekName,
+  ensureDayLog,
   generateAIPlan,
   getLastCompletedSets,
   getOrCreatePlan,
@@ -140,7 +141,7 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
   const handleToggleDone = async () => {
     if (!user || !selectedDay || !selectedDate) return;
     try {
-      if (selectedLog) {
+      if (selectedLog?.completed) {
         const result = await markDayUndoneOffline(selectedDay.id, selectedDate);
         if (result.queued) {
           setLogs((prev) => prev.filter((l) => !(l.planDayId === selectedDay.id && l.logDate === selectedDate)));
@@ -196,7 +197,7 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekStrip}>
         {days.map((day) => {
           const date = dateForDayOfWeek(day.dayOfWeek);
-          const done = logs.some((l) => l.planDayId === day.id && l.logDate === date);
+          const done = logs.some((l) => l.planDayId === day.id && l.logDate === date && l.completed);
           const isSelected = day.id === selectedDayId;
           return (
             <Pressable
@@ -217,11 +218,13 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
       {selectedDay && (
         <DayDetail
           day={selectedDay}
+          athleteUserId={athleteUserId}
+          logDate={selectedDate!}
           exercises={dayExercises}
           isLoading={isLoadingDay}
           canEditPlan={canEditPlan}
           isAthleteViewingSelf={isAthleteViewingSelf}
-          isDone={!!selectedLog}
+          isDone={!!selectedLog?.completed}
           logId={selectedLog?.id ?? null}
           onToggleDone={handleToggleDone}
           onDayUpdated={async (patch) => {
@@ -229,6 +232,7 @@ export function WorkoutWeek({ athleteUserId, canEditPlan }: Props) {
             setDays((prev) => prev.map((d) => (d.id === selectedDay.id ? { ...d, ...patch } : d)));
           }}
           onExercisesChanged={() => loadDayExercises(selectedDay.id)}
+          onLogCreated={refreshLogs}
         />
       )}
     </View>
@@ -458,6 +462,8 @@ function ProgressionHint({ exerciseId, muscleGroup, targetReps }: { exerciseId: 
 
 function DayDetail({
   day,
+  athleteUserId,
+  logDate,
   exercises,
   isLoading,
   canEditPlan,
@@ -467,8 +473,11 @@ function DayDetail({
   onToggleDone,
   onDayUpdated,
   onExercisesChanged,
+  onLogCreated,
 }: {
   day: WorkoutPlanDay;
+  athleteUserId: string;
+  logDate: string;
   exercises: WorkoutPlanExercise[];
   isLoading: boolean;
   canEditPlan: boolean;
@@ -478,6 +487,7 @@ function DayDetail({
   onToggleDone: () => void;
   onDayUpdated: (patch: { label?: string; isRestDay?: boolean }) => void;
   onExercisesChanged: () => void;
+  onLogCreated: () => void;
 }) {
   const [labelDraft, setLabelDraft] = useState(day.label);
   const [showPicker, setShowPicker] = useState(false);
@@ -521,10 +531,14 @@ function DayDetail({
             key={pe.id}
             planExercise={pe}
             canEditPlan={canEditPlan}
-            canLog={isAthleteViewingSelf && !!logId}
+            canLog={isAthleteViewingSelf}
+            athleteUserId={athleteUserId}
+            planDayId={day.id}
+            logDate={logDate}
             logId={logId}
             onRemoved={onExercisesChanged}
             onMediaChanged={onExercisesChanged}
+            onLogCreated={onLogCreated}
           />
         ))
       )}
@@ -563,16 +577,24 @@ function ExerciseRow({
   planExercise,
   canEditPlan,
   canLog,
+  athleteUserId,
+  planDayId,
+  logDate,
   logId,
   onRemoved,
   onMediaChanged,
+  onLogCreated,
 }: {
   planExercise: WorkoutPlanExercise;
   canEditPlan: boolean;
   canLog: boolean;
+  athleteUserId: string;
+  planDayId: string;
+  logDate: string;
   logId: string | null;
   onRemoved: () => void;
   onMediaChanged: () => void;
+  onLogCreated: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { exercise } = planExercise;
@@ -621,10 +643,18 @@ function ExerciseRow({
 
           {canEditPlan ? <ExerciseMediaEditor exercise={exercise} onChanged={onMediaChanged} /> : null}
 
-          {canLog && logId ? (
+          {canLog ? (
             <>
               <ProgressionHint exerciseId={exercise.id} muscleGroup={exercise.muscleGroup} targetReps={planExercise.reps} />
-              <SetLogger logId={logId} exerciseId={exercise.id} defaultSets={planExercise.sets ?? 3} />
+              <SetLogger
+                athleteUserId={athleteUserId}
+                planDayId={planDayId}
+                logDate={logDate}
+                logId={logId}
+                exerciseId={exercise.id}
+                defaultSets={planExercise.sets ?? 3}
+                onLogCreated={onLogCreated}
+              />
             </>
           ) : null}
         </View>
@@ -695,7 +725,31 @@ function ExerciseMediaEditor({ exercise, onChanged }: { exercise: Exercise; onCh
   );
 }
 
-function SetLogger({ logId, exerciseId, defaultSets }: { logId: string; exerciseId: string; defaultSets: number }) {
+// Registra reps/carga/RPE de um exercício. Não exige mais que o dia já
+// tenha sido marcado como "concluído" antes — abrir um exercício já deixa
+// pronto pra registrar; o log do dia (workout_logs) é criado sob demanda
+// na hora de salvar a PRIMEIRA série (ensureDayLog, com completed:false),
+// sem precisar de um toque explícito em "Marcar treino como concluído"
+// primeiro. Isso é o que faltava: antes, só dava pra ver esses campos
+// depois de marcar o dia inteiro como feito — ao contrário do fluxo
+// natural de ir registrando enquanto treina.
+function SetLogger({
+  athleteUserId,
+  planDayId,
+  logDate,
+  logId,
+  exerciseId,
+  defaultSets,
+  onLogCreated,
+}: {
+  athleteUserId: string;
+  planDayId: string;
+  logDate: string;
+  logId: string | null;
+  exerciseId: string;
+  defaultSets: number;
+  onLogCreated: () => void;
+}) {
   const [sets, setSets] = useState<SetEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -703,6 +757,15 @@ function SetLogger({ logId, exerciseId, defaultSets }: { logId: string; exercise
   useEffect(() => {
     let active = true;
     setIsLoading(true);
+
+    // Sem log ainda (dia recém aberto, nenhuma série registrada nele
+    // ainda) — não tem o que buscar, começa direto com as séries em branco.
+    if (!logId) {
+      setSets(Array.from({ length: defaultSets }, (_, i) => ({ setNumber: i + 1, repsDone: null, weightKg: null, rpe: null })));
+      setIsLoading(false);
+      return;
+    }
+
     listLogSets(logId, exerciseId)
       .then((existing) => {
         if (!active) return;
@@ -729,7 +792,17 @@ function SetLogger({ logId, exerciseId, defaultSets }: { logId: string; exercise
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await saveLogSets(logId, exerciseId, sets);
+      let id = logId;
+      if (!id) {
+        try {
+          id = await ensureDayLog(athleteUserId, planDayId, logDate);
+        } catch {
+          showAlert('Não foi possível iniciar o registro de hoje. Confira sua conexão e tente de novo.');
+          return;
+        }
+        onLogCreated();
+      }
+      await saveLogSets(id, exerciseId, sets);
     } catch {
       showAlert('Não foi possível salvar as séries.');
     } finally {

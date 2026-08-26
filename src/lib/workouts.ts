@@ -331,13 +331,61 @@ export async function markDayDone(userId: string, planDayId: string, logDate: st
   return data.id;
 }
 
+// Desmarca o dia — só desliga o "concluído", NÃO apaga o log nem as
+// séries já registradas nele. Antigamente isso deletava a linha de
+// workout_logs, o que também apagava (via cascade) qualquer série já
+// registrada — uma pegadinha séria: desmarcar por engano depois de
+// registrar reps/carga perdia o registro inteiro sem aviso nenhum.
 export async function markDayUndone(planDayId: string, logDate: string): Promise<void> {
   const { error } = await supabase
     .from('workout_logs')
-    .delete()
+    .update({ completed: false })
     .eq('plan_day_id', planDayId)
     .eq('log_date', logDate);
   if (error) throw error;
+}
+
+// Garante que existe um workout_log pra esse dia SEM marcar como
+// concluído (completed: false se for criar agora) — é o que destrava
+// registrar reps/carga/RPE de uma série assim que o atleta abre um
+// exercício, sem precisar antes tocar em "Marcar treino como concluído".
+// Idempotente: se já existe um log (concluído ou não), devolve o mesmo id
+// sem tocar no campo completed dele.
+export async function ensureDayLog(userId: string, planDayId: string, logDate: string): Promise<string> {
+  const { data: existing, error: selectError } = await supabase
+    .from('workout_logs')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('plan_day_id', planDayId)
+    .eq('log_date', logDate)
+    .maybeSingle();
+  if (selectError) throw selectError;
+  if (existing) return existing.id;
+
+  const { data: created, error: insertError } = await supabase
+    .from('workout_logs')
+    .insert({ user_id: userId, plan_day_id: planDayId, log_date: logDate, completed: false })
+    .select('id')
+    .single();
+  if (insertError) {
+    // 23505 = violação da constraint unique(user_id, log_date, plan_day_id) —
+    // outra chamada concorrente (ex.: duas séries de exercícios diferentes
+    // sendo salvas quase ao mesmo tempo) criou o log entre o select e o
+    // insert acima. Mesmo padrão idempotente já usado em getOrCreatePlan.
+    if (insertError.code === '23505') {
+      const { data: retried, error: retryError } = await supabase
+        .from('workout_logs')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('plan_day_id', planDayId)
+        .eq('log_date', logDate)
+        .single();
+      if (retryError) throw retryError;
+      return retried.id;
+    }
+    throw insertError;
+  }
+  return created.id;
 }
 
 export async function listLogSets(logId: string, exerciseId: string): Promise<SetEntry[]> {

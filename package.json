@@ -20,14 +20,15 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@sentry/react-native": "^8.23.0",
     "@supabase/supabase-js": "^2.112.2",
-    "expo": "~57.0.0",
-    "expo-constants": "*",
-    "expo-crypto": "*",
+    "expo": "~57.0.16",
+    "expo-constants": "~57.0.14",
+    "expo-crypto": "~57.0.2",
     "expo-font": "*",
-    "expo-image-picker": "~57.0.8",
-    "expo-linking": "*",
-    "expo-router": "~57.0.11",
-    "expo-splash-screen": "*",
+    "expo-image-picker": "~57.0.13",
+    "expo-linking": "~57.0.7",
+    "expo-modules-core": "~57.0.13",
+    "expo-router": "~57.0.16",
+    "expo-splash-screen": "~57.0.8",
     "expo-status-bar": "*",
     "expo-system-ui": "*",
     "posthog-react-native": "^4.63.2",
@@ -39,6 +40,10 @@
     "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^4.0.0",
     "react-native-web": "~0.21.0"
+  },
+  "overrides": {
+    "react-native-reanimated": "4.5.0",
+    "react-native-worklets": "0.10.4"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",

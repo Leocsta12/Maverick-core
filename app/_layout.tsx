@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Slot, usePathname } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { Button } from '../src/components/Button';
 import { AlertHost } from '../src/lib/alert';
 import { flushOfflineQueue } from '../src/lib/offlineSync';
 import { identifyUser, initSentry, resetUser, trackScreenView } from '../src/lib/monitoring';
+import { clearMyPushTokens, saveMyPushToken } from '../src/lib/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -46,6 +47,28 @@ function MonitoringOnAuthChange() {
       resetUser();
     }
   }, [user]);
+  return null;
+}
+
+// Pede permissão e registra o token de push assim que loga; remove o
+// token ao deslogar (não faz sentido continuar recebendo avisos sobre a
+// conta de quem já saiu). Guarda o último userId num ref porque, no
+// momento em que `user` já virou null, não dá mais pra saber de quem era
+// a sessão que acabou de encerrar.
+function PushTokenOnAuthChange() {
+  const { user } = useAuth();
+  const lastUserId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      lastUserId.current = user.id;
+      saveMyPushToken(user.id).catch(() => {});
+    } else if (lastUserId.current) {
+      clearMyPushTokens(lastUserId.current).catch(() => {});
+      lastUserId.current = null;
+    }
+  }, [user]);
+
   return null;
 }
 
@@ -107,6 +130,7 @@ function RootLayout() {
             <AlertHost />
             <OfflineSyncOnStart />
             <MonitoringOnAuthChange />
+            <PushTokenOnAuthChange />
             <ScreenViewTracker />
           </View>
         </AuthProvider>

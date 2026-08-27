@@ -57,3 +57,4 @@ jobs:
           supabase/functions/strava-sync-all
           supabase/functions/generate-workout-plan
           supabase/functions/analyze-vision
+          supabase/functions/notify-athletes

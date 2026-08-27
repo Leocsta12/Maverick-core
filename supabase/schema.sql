@@ -1307,3 +1307,62 @@ drop policy if exists "upcoming_races: select as admin" on public.upcoming_races
 create policy "upcoming_races: select as admin"
   on public.upcoming_races for select
   using (public.is_app_admin());
+
+-- Maverick Core — schema de notificações proativas
+--
+-- push_tokens: token de push da Expo por aparelho. unique(user_id, token)
+-- em vez de unique(token) sozinho — de propósito: um aparelho compartilhado
+-- entre duas contas não deve dar erro de conflito ao registrar o segundo
+-- usuário (ver comentário completo em src/lib/notifications.ts).
+create table if not exists public.push_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  token text not null,
+  platform text not null default 'unknown',
+  created_at timestamptz not null default now(),
+  unique (user_id, token)
+);
+
+alter table public.push_tokens enable row level security;
+
+drop policy if exists "push_tokens: select own" on public.push_tokens;
+create policy "push_tokens: select own"
+  on public.push_tokens for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "push_tokens: insert own" on public.push_tokens;
+create policy "push_tokens: insert own"
+  on public.push_tokens for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "push_tokens: update own" on public.push_tokens;
+create policy "push_tokens: update own"
+  on public.push_tokens for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "push_tokens: delete own" on public.push_tokens;
+create policy "push_tokens: delete own"
+  on public.push_tokens for delete
+  using (auth.uid() = user_id);
+
+-- notification_log: histórico de avisos já enviados — a Edge Function
+-- notify-athletes usa isso pra não mandar o mesmo aviso todo dia enquanto
+-- a condição persistir (ex.: prontidão baixa por uma semana inteira vira
+-- UM aviso, não sete). Só a service_role escreve aqui (a Edge Function
+-- roda com esse client) — o usuário só pode LER o próprio histórico.
+create table if not exists public.notification_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  notification_type text not null,
+  sent_at timestamptz not null default now()
+);
+
+alter table public.notification_log enable row level security;
+
+drop policy if exists "notification_log: select own" on public.notification_log;
+create policy "notification_log: select own"
+  on public.notification_log for select
+  using (auth.uid() = user_id);
+
+create index if not exists notification_log_user_type_idx on public.notification_log (user_id, notification_type, sent_at desc);

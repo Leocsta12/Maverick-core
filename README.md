@@ -304,7 +304,10 @@ supabase/
     _shared/
       stravaSync.ts             # syncStravaForUser, toActivityRow, needsTokenRefresh — usado por
                                  # strava-sync (sob demanda) e strava-sync-all (cron), não é deployado
+      notifyLogic.ts             # buildCandidates, shouldNotify — usado por notify-athletes, não é deployado
+      trainingLoad.ts / periodization.ts / taper.ts  # ESPELHOS de src/lib/*.ts (copiados, não importados)
       __tests__/stravaSync.test.ts  # Deno test — toActivityRow, needsTokenRefresh
+      __tests__/notifyLogic.test.ts # Deno test — buildCandidates, shouldNotify
     analyze-vision/            # Edge Function que chama a Claude API (visão)
       __tests__/index.test.ts    # Deno test — toBase64, json, ramos do handler sem I/O
     strava-oauth-callback/      # troca o code do Strava por tokens, salva a conexão
@@ -315,9 +318,12 @@ supabase/
       __tests__/index.test.ts    # Deno test — portão de autenticação (x-cron-secret)
     generate-workout-plan/        # Edge Function que chama a Claude API (Maverick Coach IA)
       __tests__/index.test.ts      # Deno test — buildUserMessage, isValidLevel, ramos do handler
+    notify-athletes/              # push proativo (prontidão baixa, deload atrasado, prova chegando) — cron
+      __tests__/index.test.ts      # Deno test — portão de autenticação (x-cron-secret)
 .github/
   workflows/ci.yml               # typecheck + testes JS a cada push/PR, + job separado de testes Deno
   workflows/strava-auto-sync.yml # chama strava-sync-all a cada 6h (cron do GitHub Actions)
+  workflows/notify-athletes.yml  # chama notify-athletes 2x/dia (cron do GitHub Actions)
 jest.config.js                   # preset jest-expo, setup, testMatch (ignora supabase/functions/)
 jest.setup.js                    # env falso do Supabase + mock do AsyncStorage pros testes
 ```
@@ -503,19 +509,27 @@ por isso que dá pra rodar em CI sem segredo nenhum.
 
 ### Edge Functions (Deno)
 
-As 5 Edge Functions (`supabase/functions/*`, mais `_shared/` — lógica
+As 6 Edge Functions (`supabase/functions/*`, mais `_shared/` — lógica
 compartilhada, não deployada) têm sua própria suíte, em Deno — outro
 runtime, fora do Jest de propósito (`jest.config.js` ignora
-`/supabase/functions/` explicitamente pra nunca confundir os dois). 37
+`/supabase/functions/` explicitamente pra nunca confundir os dois). 54
 testes, mesma filosofia da Fase 1 do Jest: lógica pura extraída do handler
 primeiro — `toActivityRow`/`needsTokenRefresh` (`_shared/stravaSync.ts`,
 usada por strava-sync e strava-sync-all), `buildUserMessage`/`isValidLevel`
 (generate-workout-plan), `htmlPage` (strava-oauth-callback), `toBase64`
-(analyze-vision) — mais os ramos do handler que retornam **antes** de
-precisar de Supabase/Claude/Strava de verdade (CORS, autenticação,
-segredo do cron, validação de entrada). O que exige uma API externa de
-verdade (trocar código OAuth por token, chamar a Claude, chamar o Strava)
-fica de fora — não dá pra testar isso sem gastar chamada real.
+(analyze-vision), `buildCandidates`/`shouldNotify` (`_shared/notifyLogic.ts`,
+usada por notify-athletes) — mais os ramos do handler que retornam
+**antes** de precisar de Supabase/Claude/Strava/Expo de verdade (CORS,
+autenticação, segredo do cron, validação de entrada). O que exige uma API
+externa de verdade (trocar código OAuth por token, chamar a Claude,
+chamar o Strava, mandar push de verdade) fica de fora — não dá pra testar
+isso sem gastar chamada real.
+
+`_shared/trainingLoad.ts`, `periodization.ts` e `taper.ts` são ESPELHOS
+dos módulos equivalentes em `src/lib/` (copiados, não importados — Node/
+Metro e Deno são toolchains separadas sem um jeito direto de compartilhar
+módulo). Se mudar o algoritmo de carga/deload/taper, replica dos dois
+lados.
 
 ```bash
 # instala o Deno (uma vez): irm https://deno.land/install.ps1 | iex  (PowerShell/Windows)
@@ -525,7 +539,8 @@ deno test --allow-net --allow-env --node-modules-dir=none --min-dep-age=0 \
   supabase/functions/strava-sync \
   supabase/functions/strava-sync-all \
   supabase/functions/generate-workout-plan \
-  supabase/functions/analyze-vision
+  supabase/functions/analyze-vision \
+  supabase/functions/notify-athletes
 ```
 
 > **Pegadinha real #3**: o Deno lê o `package.json` da raiz do repo (do

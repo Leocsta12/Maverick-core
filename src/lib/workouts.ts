@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { LoggedSet } from './personalRecords';
 
 /**
  * Maverick Treinos — plano semanal de exercícios, catálogo compartilhado
@@ -500,6 +501,86 @@ export async function getRecentAverageRpe(userId: string, days = 14): Promise<nu
   }
   if (values.length === 0) return null;
   return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+// Todas as séries com carga e reps registrados nos últimos `days` dias,
+// com o nome do exercício embutido — matéria-prima de
+// src/lib/personalRecords.ts (1RM estimado e recordes pessoais). Sem
+// filtro de `completed`: a série já é um dado real assim que salva, mesmo
+// antes do dia inteiro ser marcado como concluído (ver ensureDayLog).
+// Séries sem peso ou reps (aquecimento, campo em branco) ficam de fora —
+// não dá pra estimar 1RM sem os dois. Ordenado por data crescente porque
+// detectPrHistory precisa da ordem cronológica pra saber QUANDO cada
+// recorde aconteceu.
+export async function listLoggedSetsForRecords(userId: string, days = 365): Promise<LoggedSet[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceIso = since.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('workout_logs')
+    .select('log_date, workout_log_sets (exercise_id, weight_kg, reps_done, exercises (name))')
+    .eq('user_id', userId)
+    .gte('log_date', sinceIso)
+    .order('log_date', { ascending: true });
+  if (error) throw error;
+
+  const entries: LoggedSet[] = [];
+  for (const log of (data ?? []) as any[]) {
+    for (const set of log.workout_log_sets ?? []) {
+      if (set.weight_kg == null || set.reps_done == null) continue;
+      entries.push({
+        exerciseId: set.exercise_id,
+        exerciseName: set.exercises?.name ?? 'Exercício',
+        weightKg: set.weight_kg,
+        repsDone: set.reps_done,
+        logDate: log.log_date,
+      });
+    }
+  }
+  return entries;
+}
+
+// Histórico de séries com carga+reps de UM exercício específico — usado
+// pra checar na hora se uma série recém-salva é um novo recorde (ver
+// isNewPersonalRecord em personalRecords.ts). Em duas consultas simples
+// pelo mesmo motivo de getLastCompletedSets: evita depender de filtro em
+// coluna de tabela embutida do PostgREST.
+export async function listExerciseHistoryForRecords(
+  userId: string,
+  exerciseId: string,
+  days = 365
+): Promise<LoggedSet[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceIso = since.toISOString().slice(0, 10);
+
+  const { data: logs, error: logsError } = await supabase
+    .from('workout_logs')
+    .select('id, log_date')
+    .eq('user_id', userId)
+    .gte('log_date', sinceIso);
+  if (logsError) throw logsError;
+  if (!logs || logs.length === 0) return [];
+
+  const { data: sets, error: setsError } = await supabase
+    .from('workout_log_sets')
+    .select('log_id, weight_kg, reps_done, exercises (name)')
+    .eq('exercise_id', exerciseId)
+    .in('log_id', logs.map((l) => l.id));
+  if (setsError) throw setsError;
+
+  const dateByLogId = new Map(logs.map((l) => [l.id, l.log_date]));
+  return (sets ?? [])
+    .filter((s: any) => s.weight_kg != null && s.reps_done != null)
+    .map((s: any) => ({
+      exerciseId,
+      exerciseName: s.exercises?.name ?? 'Exercício',
+      weightKg: s.weight_kg as number,
+      repsDone: s.reps_done as number,
+      logDate: dateByLogId.get(s.log_id) ?? '',
+    }))
+    .sort((a, b) => a.logDate.localeCompare(b.logDate));
 }
 
 // Maverick Coach IA — chama a Edge Function que monta o plano com a Claude

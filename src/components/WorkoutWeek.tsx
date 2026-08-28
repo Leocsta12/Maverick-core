@@ -27,6 +27,7 @@ import {
   getLastCompletedSets,
   getOrCreatePlan,
   listDayExercises,
+  listExerciseHistoryForRecords,
   listExercises,
   listLogSets,
   listPlanDays,
@@ -41,6 +42,7 @@ import {
   uploadExercisePhoto,
 } from '../lib/workouts';
 import { currentAndPreviousWeek } from '../lib/trainingLoad';
+import { estimateOneRepMax, isNewPersonalRecord } from '../lib/personalRecords';
 import { parseRepsTarget, suggestProgression, type OverloadSuggestion } from '../lib/progressiveOverload';
 import { volumeTier, VOLUME_TIER_LABELS, weeklyVolumeByMuscleGroup } from '../lib/muscleVolume';
 import { detectDeloadStatus } from '../lib/periodization';
@@ -652,6 +654,7 @@ function ExerciseRow({
                 logDate={logDate}
                 logId={logId}
                 exerciseId={exercise.id}
+                exerciseName={exercise.name}
                 defaultSets={planExercise.sets ?? 3}
                 onLogCreated={onLogCreated}
               />
@@ -739,6 +742,7 @@ function SetLogger({
   logDate,
   logId,
   exerciseId,
+  exerciseName,
   defaultSets,
   onLogCreated,
 }: {
@@ -747,6 +751,7 @@ function SetLogger({
   logDate: string;
   logId: string | null;
   exerciseId: string;
+  exerciseName: string;
   defaultSets: number;
   onLogCreated: () => void;
 }) {
@@ -792,6 +797,12 @@ function SetLogger({
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      // Busca o histórico ANTES de salvar, pra comparar contra o que
+      // existia até agora — sem isso a própria série que estamos prestes
+      // a salvar entraria na comparação e nenhuma série jamais bateria
+      // "a si mesma".
+      const priorHistory = await listExerciseHistoryForRecords(athleteUserId, exerciseId).catch(() => []);
+
       let id = logId;
       if (!id) {
         try {
@@ -803,6 +814,17 @@ function SetLogger({
         onLogCreated();
       }
       await saveLogSets(id, exerciseId, sets);
+
+      const newRecord = sets
+        .filter((s) => s.weightKg != null && s.repsDone != null)
+        .map((s) => ({ exerciseId, exerciseName, weightKg: s.weightKg as number, repsDone: s.repsDone as number, logDate }))
+        .find((s) => isNewPersonalRecord(priorHistory, s));
+      if (newRecord) {
+        showAlert(
+          '🏆 Novo recorde!',
+          `${newRecord.exerciseName}: ${newRecord.weightKg}kg × ${newRecord.repsDone} (≈${Math.round(estimateOneRepMax(newRecord.weightKg, newRecord.repsDone) ?? 0)}kg de 1RM estimado)`
+        );
+      }
     } catch {
       showAlert('Não foi possível salvar as séries.');
     } finally {

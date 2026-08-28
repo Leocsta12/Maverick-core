@@ -12,7 +12,7 @@ type Row = {
   icon: keyof typeof Feather.glyphMap;
   title: string;
   subtitle: string;
-  href: '/vision' | '/coach' | '/profile' | '/mission' | '/planner' | '/admin' | '/onboarding' | '/records' | '/report';
+  href: '/vision' | '/coach' | '/profile' | '/mission' | '/planner' | '/admin' | '/onboarding' | '/records' | '/report' | '/pain';
 };
 
 const ROWS: Row[] = [
@@ -20,6 +20,7 @@ const ROWS: Row[] = [
   { icon: 'check-square', title: 'Hábitos', subtitle: 'Checklist diário com sequência', href: '/mission' },
   { icon: 'award', title: 'PRs', subtitle: '1RM estimado e recordes por exercício', href: '/records' },
   { icon: 'bar-chart-2', title: 'Relatório semanal', subtitle: 'Carga, volume, prontidão e nutrição da semana', href: '/report' },
+  { icon: 'alert-triangle', title: 'Dor / desconforto', subtitle: 'Registre pra validar se os alertas de carga funcionam', href: '/pain' },
   { icon: 'camera', title: 'Vision', subtitle: 'Fotos de progresso e tendências', href: '/vision' },
   { icon: 'users', title: 'Coach', subtitle: 'Vínculo treinador ↔ atleta', href: '/coach' },
   { icon: 'compass', title: 'Tour do app', subtitle: 'Reveja a explicação dos números do Maverick', href: '/onboarding' },

@@ -1366,3 +1366,53 @@ create policy "notification_log: select own"
   using (auth.uid() = user_id);
 
 create index if not exists notification_log_user_type_idx on public.notification_log (user_id, notification_type, sent_at desc);
+
+-- Maverick Dor/Desconforto — registro de dor ou desconforto ligado (ou
+-- não) a um exercício específico. Existe pra validar de verdade se os
+-- alertas de risco de carga (ACWR/deload — ver trainingLoad.ts,
+-- periodization.ts) estão evitando lesão: sem esse dado, "deload
+-- recomendado" é só uma hipótese; com ele, dá pra cruzar "teve dor" com
+-- "estava em risco alto" e ver se o alerta realmente antecipa o
+-- problema. Mesmo padrão de RLS de workout_logs: o próprio atleta lê/
+-- escreve, o treinador vinculado (accepted) só lê.
+create table if not exists public.pain_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  entry_date date not null default current_date,
+  body_part text not null,
+  exercise_id uuid references public.exercises (id) on delete set null,
+  severity integer not null check (severity between 1 and 10),
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.pain_logs enable row level security;
+
+drop policy if exists "pain_logs: select own or as coach" on public.pain_logs;
+create policy "pain_logs: select own or as coach"
+  on public.pain_logs for select
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.coach_links cl
+      where cl.coach_id = auth.uid() and cl.athlete_id = pain_logs.user_id and cl.status = 'accepted'
+    )
+  );
+
+drop policy if exists "pain_logs: insert own" on public.pain_logs;
+create policy "pain_logs: insert own"
+  on public.pain_logs for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "pain_logs: update own" on public.pain_logs;
+create policy "pain_logs: update own"
+  on public.pain_logs for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "pain_logs: delete own" on public.pain_logs;
+create policy "pain_logs: delete own"
+  on public.pain_logs for delete
+  using (auth.uid() = user_id);
+
+create index if not exists pain_logs_user_date_idx on public.pain_logs (user_id, entry_date desc);

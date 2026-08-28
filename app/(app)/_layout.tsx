@@ -72,6 +72,7 @@ export default function AppLayout() {
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="planner" options={{ href: null }} />
       <Tabs.Screen name="records" options={{ href: null }} />
+      <Tabs.Screen name="report" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -127,6 +127,21 @@ export async function getLatestMealDate(userId: string): Promise<string | null> 
   return data?.entry_date ?? null;
 }
 
+// Datas (com repetição — uma por refeição, não deduplicada) de toda
+// refeição registrada a partir de `sinceIso` — matéria-prima da
+// consistência de nutrição no Relatório Semanal (src/lib/weeklyDigest.ts,
+// que deduplica e filtra pela semana certa). Só a coluna de data, sem
+// trazer o resto da refeição — é tudo que esse cálculo precisa.
+export async function listMealDatesSince(userId: string, sinceIso: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('nutrition_meals')
+    .select('entry_date')
+    .eq('user_id', userId)
+    .gte('entry_date', sinceIso);
+  if (error) throw error;
+  return (data ?? []).map((row) => row.entry_date);
+}
+
 // --- Água ------------------------------------------------------------------
 
 export async function listWaterLogs(userId: string, entryDate: string): Promise<WaterLog[]> {

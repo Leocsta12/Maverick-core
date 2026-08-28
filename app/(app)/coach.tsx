@@ -18,7 +18,13 @@ import {
   requestCoachLink,
   respondToLink,
 } from '../../src/lib/coach';
-import { AthleteOverview, CheckInSeverity, checkInStatus, getAthleteOverview } from '../../src/lib/coachOverview';
+import {
+  AthleteOverview,
+  athleteRiskStatus,
+  attentionRank,
+  checkInStatus,
+  getAthleteOverview,
+} from '../../src/lib/coachOverview';
 import { HealthEntry, computeMaverickScore, deriveInsight, listHealthEntries } from '../../src/lib/health';
 import {
   MissionCompletion,
@@ -142,19 +148,21 @@ export default function Coach() {
 
   const selectedAthlete = athletes.find((a) => a.athlete.id === selectedAthleteId);
 
-  const severityRank: Record<CheckInSeverity, number> = { stale: 3, warn: 2, none: 1, ok: 0 };
+  const overviewOf = (athleteId: string): AthleteOverview =>
+    overviews[athleteId] ?? { score: null, lastCheckInDate: null, readinessScore: null, acwrRisk: null, deloadRecommended: false };
+
+  // Ordena pela urgência combinada (risco de treino + check-in) — ver
+  // attentionRank em coachOverview.ts pro raciocínio de qual sinal vence
+  // qual (carga em risco alto vem antes até de "sumiu do app").
   const sortedAthletes = useMemo(() => {
     return [...athletes].sort((a, b) => {
-      const severityA = checkInStatus(overviews[a.athlete.id]?.lastCheckInDate ?? null).severity;
-      const severityB = checkInStatus(overviews[b.athlete.id]?.lastCheckInDate ?? null).severity;
-      const diff = severityRank[severityB] - severityRank[severityA];
+      const diff = attentionRank(overviewOf(b.athlete.id)) - attentionRank(overviewOf(a.athlete.id));
       return diff !== 0 ? diff : a.athlete.name.localeCompare(b.athlete.name);
     });
   }, [athletes, overviews]);
 
-  const staleCount = athletes.filter(
-    (a) => checkInStatus(overviews[a.athlete.id]?.lastCheckInDate ?? null).severity === 'stale'
-  ).length;
+  const staleCount = athletes.filter((a) => checkInStatus(overviewOf(a.athlete.id).lastCheckInDate).severity === 'stale').length;
+  const atRiskCount = athletes.filter((a) => athleteRiskStatus(overviewOf(a.athlete.id)).severity === 'alto').length;
 
   return (
     <ScrollView
@@ -205,8 +213,9 @@ export default function Coach() {
       <View style={styles.athletesHeaderRow}>
         <Text style={[styles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>Seus atletas</Text>
         {!isLoading && athletes.length > 0 && (
-          <Text style={[styles.athletesSummary, staleCount > 0 && styles.athletesSummaryWarn]}>
+          <Text style={[styles.athletesSummary, (staleCount > 0 || atRiskCount > 0) && styles.athletesSummaryWarn]}>
             {athletes.length} vinculado{athletes.length === 1 ? '' : 's'}
+            {atRiskCount > 0 ? ` · ${atRiskCount} em risco de carga` : ''}
             {staleCount > 0 ? ` · ${staleCount} sem check-in há dias` : ''}
           </Text>
         )}
@@ -221,6 +230,8 @@ export default function Coach() {
         sortedAthletes.map((item) => {
           const overview = overviews[item.athlete.id];
           const status = checkInStatus(overview?.lastCheckInDate ?? null);
+          const risk = athleteRiskStatus(overviewOf(item.athlete.id));
+          const showRiskBadge = risk.severity === 'alto' || risk.severity === 'atencao';
           return (
             <Pressable
               key={item.linkId}
@@ -236,6 +247,23 @@ export default function Coach() {
                     {isLoadingOverviews && !overview ? 'Carregando…' : status.label}
                   </Text>
                 </View>
+                {!isLoadingOverviews && showRiskBadge && (
+                  <View style={[styles.riskBadge, styles[`riskBadge_${risk.severity}`]]}>
+                    <Feather
+                      name="activity"
+                      size={10}
+                      color={risk.severity === 'alto' ? colors.danger : colors.warning}
+                    />
+                    <Text
+                      style={[
+                        styles.riskBadgeText,
+                        { color: risk.severity === 'alto' ? colors.danger : colors.warning },
+                      ]}
+                    >
+                      {risk.label}
+                    </Text>
+                  </View>
+                )}
               </View>
               {overview?.score != null && (
                 <View style={styles.athleteScoreWrap}>
@@ -549,6 +577,22 @@ const styles = StyleSheet.create({
   statusDot_warn: { backgroundColor: colors.warning },
   statusDot_stale: { backgroundColor: colors.danger },
   statusDot_none: { backgroundColor: colors.steel },
+  riskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  riskBadge_alto: { borderColor: colors.danger, backgroundColor: `${colors.danger}1a` },
+  riskBadge_atencao: { borderColor: colors.warning, backgroundColor: `${colors.warning}1a` },
+  riskBadge_ok: {},
+  riskBadge_sem_dado: {},
+  riskBadgeText: { fontFamily: typography.mono, fontSize: 10, letterSpacing: 0.2 },
   athleteStatusText: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginLeft: 2 },
   athleteScoreWrap: { alignItems: 'center', marginLeft: spacing.sm },
   athleteScoreValue: { fontFamily: typography.display, fontSize: 18, color: colors.textPrimary },

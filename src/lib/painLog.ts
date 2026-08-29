@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { acuteChronicRatio, estimateMaxHeartrate, type LoadableActivity, type LoadRisk } from './trainingLoad';
 
 /**
  * Maverick Dor/Desconforto — Fase 1: registro manual, ligado (ou não) a
@@ -89,4 +90,61 @@ export async function listPainEntries(userId: string, limit = 30): Promise<PainE
 export async function deletePainEntry(id: string): Promise<void> {
   const { error } = await supabase.from('pain_logs').delete().eq('id', id);
   if (error) throw error;
+}
+
+// --- Correlação com risco de carga (ACWR) ---------------------------------
+//
+// O ponto inteiro de registrar dor é validar se os alertas de risco de
+// carga (ver trainingLoad.ts) realmente anteciparam o problema. Como
+// acuteChronicRatio aceita um `now` arbitrário, dá pra perguntar "qual
+// era o ACWR NAQUELE DIA" em vez de só "qual é o ACWR hoje" — reaproveita
+// a mesma fórmula já testada, sem duplicar nada.
+
+export type PainEntryWithRisk = PainEntry & { loadRiskAtTime: LoadRisk | null };
+
+/** LoadableActivity + FC máxima da própria atividade — é o que estimateMaxHeartrate precisa pra achar a FC máxima do atleta. */
+type ActivityForRiskCorrelation = LoadableActivity & { maxHeartrate: number | null };
+
+/**
+ * Marca cada registro de dor com o risco de carga que existia NAQUELE
+ * DIA (não o risco de hoje). `loadRiskAtTime` vem null quando não há FC
+ * máxima estimável (sem Strava conectado, ou sem atividade com FC ainda)
+ * — nesse caso não dá pra afirmar nada, nem "alto" nem "ideal".
+ */
+export function annotatePainWithLoadRisk(entries: PainEntry[], activities: ActivityForRiskCorrelation[]): PainEntryWithRisk[] {
+  const maxHeartrate = estimateMaxHeartrate(activities);
+  if (maxHeartrate == null) return entries.map((e) => ({ ...e, loadRiskAtTime: null }));
+
+  return entries.map((e) => {
+    // Meio-dia local evita cair do lado errado da virada de dia por causa
+    // de fuso horário — mesmo cuidado usado em outros lugares do app que
+    // lidam com datas "só dia" vindas do Postgres.
+    const atDate = new Date(`${e.entryDate}T12:00:00`);
+    return { ...e, loadRiskAtTime: acuteChronicRatio(activities, maxHeartrate, atDate).risk };
+  });
+}
+
+export type PainRiskSummary = {
+  /** Registros de dor forte (severidade >= 7) com risco de carga conhecido naquele dia. */
+  severeWithKnownRisk: number;
+  /** Desses, quantos aconteceram com ACWR "alto" — o alerta bateu ANTES do problema. */
+  severeDuringHighRisk: number;
+};
+
+const SEVERE_THRESHOLD = 7;
+
+/**
+ * Resume a validação num número só: de todas as dores fortes com risco
+ * conhecido, quantas aconteceram durante uma janela de ACWR "alto"? Um
+ * número alto aqui é evidência de que o alerta de carga é um bom
+ * preditor; um número baixo sugere que a dor tem outra causa (técnica,
+ * fadiga acumulada fora do que o ACWR capta, etc.) — os dois são
+ * informação útil pro treinador.
+ */
+export function summarizePainRiskCorrelation(entries: PainEntryWithRisk[]): PainRiskSummary {
+  const severe = entries.filter((e) => e.severity >= SEVERE_THRESHOLD && e.loadRiskAtTime != null);
+  return {
+    severeWithKnownRisk: severe.length,
+    severeDuringHighRisk: severe.filter((e) => e.loadRiskAtTime === 'alto').length,
+  };
 }

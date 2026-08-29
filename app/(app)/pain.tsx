@@ -8,14 +8,17 @@ import { TextField } from '../../src/components/TextField';
 import { Button } from '../../src/components/Button';
 import {
   addPainEntry,
+  annotatePainWithLoadRisk,
   COMMON_BODY_PARTS,
   deletePainEntry,
   listPainEntries,
   severityLabel,
+  summarizePainRiskCorrelation,
   todayIsoDate,
-  type PainEntry,
+  type PainEntryWithRisk,
 } from '../../src/lib/painLog';
 import { listExercises, type Exercise } from '../../src/lib/workouts';
+import { listStravaActivities } from '../../src/lib/strava';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 
 function formatDatePt(iso: string): string {
@@ -32,7 +35,7 @@ function severityColor(severity: number): string {
 export default function Pain() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [entries, setEntries] = useState<PainEntry[]>([]);
+  const [entries, setEntries] = useState<PainEntryWithRisk[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -45,9 +48,13 @@ export default function Pain() {
   const load = useCallback(() => {
     if (!user) return;
     setIsLoading(true);
-    Promise.all([listPainEntries(user.id), listExercises().catch(() => [])])
-      .then(([e, ex]) => {
-        setEntries(e);
+    Promise.all([
+      listPainEntries(user.id),
+      listExercises().catch(() => []),
+      listStravaActivities(user.id, 60).catch(() => []), // sem Strava conectado = sem correlação, não quebra o resto
+    ])
+      .then(([e, ex, activities]) => {
+        setEntries(annotatePainWithLoadRisk(e, activities));
         setExercises(ex);
       })
       .catch(() => showAlert('Não foi possível carregar seu histórico de dor/desconforto.'))
@@ -79,7 +86,7 @@ export default function Pain() {
     }
   };
 
-  const handleDelete = (entry: PainEntry) => {
+  const handleDelete = (entry: PainEntryWithRisk) => {
     showAlert('Remover registro?', `${entry.bodyPart} — ${formatDatePt(entry.entryDate)}`, [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -167,30 +174,50 @@ export default function Pain() {
       ) : entries.length === 0 ? (
         <Text style={styles.emptyText}>Nenhum registro ainda — melhor assim.</Text>
       ) : (
-        <View style={styles.list}>
-          {entries.map((entry, i) => (
-            <Pressable
-              key={entry.id}
-              onLongPress={() => handleDelete(entry)}
-              style={[styles.row, i === entries.length - 1 && { borderBottomWidth: 0 }]}
-            >
-              <View style={[styles.severityBadge, { borderColor: severityColor(entry.severity) }]}>
-                <Text style={[styles.severityBadgeText, { color: severityColor(entry.severity) }]}>{entry.severity}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>
-                  {entry.bodyPart}
-                  {entry.exerciseName ? ` · ${entry.exerciseName}` : ''}
-                </Text>
-                <Text style={styles.rowMeta}>
-                  {severityLabel(entry.severity)} · {formatDatePt(entry.entryDate)}
-                  {entry.notes ? ` · ${entry.notes}` : ''}
+        <>
+          {(() => {
+            const correlation = summarizePainRiskCorrelation(entries);
+            if (correlation.severeWithKnownRisk === 0) return null;
+            return (
+              <View style={styles.correlationBox}>
+                <Feather name="link" size={12} color={colors.textMuted} />
+                <Text style={styles.correlationText}>
+                  {correlation.severeDuringHighRisk} de {correlation.severeWithKnownRisk} dores fortes aconteceram
+                  durante risco de carga alto (ACWR) — {correlation.severeDuringHighRisk === correlation.severeWithKnownRisk
+                    ? 'o alerta de carga está antecipando bem.'
+                    : 'nem toda dor tem a ver com carga — vale olhar também técnica e recuperação.'}
                 </Text>
               </View>
-              <Feather name="trash-2" size={14} color={colors.steel} />
-            </Pressable>
-          ))}
-        </View>
+            );
+          })()}
+          <View style={styles.list}>
+            {entries.map((entry, i) => (
+              <Pressable
+                key={entry.id}
+                onLongPress={() => handleDelete(entry)}
+                style={[styles.row, i === entries.length - 1 && { borderBottomWidth: 0 }]}
+              >
+                <View style={[styles.severityBadge, { borderColor: severityColor(entry.severity) }]}>
+                  <Text style={[styles.severityBadgeText, { color: severityColor(entry.severity) }]}>{entry.severity}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>
+                    {entry.bodyPart}
+                    {entry.exerciseName ? ` · ${entry.exerciseName}` : ''}
+                  </Text>
+                  <Text style={styles.rowMeta}>
+                    {severityLabel(entry.severity)} · {formatDatePt(entry.entryDate)}
+                    {entry.notes ? ` · ${entry.notes}` : ''}
+                  </Text>
+                  {entry.loadRiskAtTime === 'alto' && (
+                    <Text style={styles.riskTag}>⚠ risco de carga alto nesse dia</Text>
+                  )}
+                </View>
+                <Feather name="trash-2" size={14} color={colors.steel} />
+              </Pressable>
+            ))}
+          </View>
+        </>
       )}
       {entries.length > 0 && <Text style={styles.footnote}>Toque e segure num registro pra removê-lo.</Text>}
     </ScrollView>
@@ -232,6 +259,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   emptyText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  correlationBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.sm,
+  },
+  correlationText: { flex: 1, fontFamily: typography.body, fontSize: 12, color: colors.textMuted, lineHeight: 17 },
+  riskTag: { fontFamily: typography.mono, fontSize: 10, color: colors.warning, marginTop: 3 },
   list: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

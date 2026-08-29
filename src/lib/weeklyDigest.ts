@@ -3,7 +3,8 @@ import { weeklyVolumeByMuscleGroup, type WeeklyMuscleVolume } from './muscleVolu
 import { computeMaverickScore, listHealthEntries, type HealthEntry } from './health';
 import { listMealDatesSince } from './nutrition';
 import { listStravaActivities } from './strava';
-import { listRecentLoggedSets } from './workouts';
+import { listRecentLoggedSets, listLoggedSetsForRecords } from './workouts';
+import { detectPrHistory, type LoggedSet, type PersonalRecord } from './personalRecords';
 
 /**
  * Maverick Relatório Semanal — sintetiza carga de treino, volume de
@@ -52,6 +53,8 @@ export type WeeklyDigest = {
   volume: WeeklyTrend;
   readiness: WeeklyTrend;
   nutritionAdherence: { daysLogged: number; totalDays: number };
+  /** PRs (1RM estimado — ver personalRecords.ts) batidos DENTRO da semana atual. */
+  newPRs: PersonalRecord[];
 };
 
 function totalSets(week: WeeklyMuscleVolume | null): number | null {
@@ -92,6 +95,13 @@ export function buildWeeklyDigest(input: {
   mealDatesThisWeek: string[];
   /** Histórico de Health em qualquer ordem — usado pra tendência de prontidão. */
   healthEntries: HealthEntry[];
+  /**
+   * Histórico de séries com peso+reps EM QUALQUER ORDEM, cobrindo o
+   * máximo de dias possível (não só a semana atual) — detectPrHistory
+   * precisa do histórico completo pra saber se algo é DE VERDADE um
+   * recorde novo, não só um número bom dessa semana.
+   */
+  loggedSetsHistory: LoggedSet[];
   now?: Date;
 }): WeeklyDigest {
   const now = input.now ?? new Date();
@@ -112,12 +122,16 @@ export function buildWeeklyDigest(input: {
 
   const daysLogged = new Set(input.mealDatesThisWeek.filter((d) => d >= thisWeekStartIso && d < nextWeekStartIso)).size;
 
+  const sortedSets = [...input.loggedSetsHistory].sort((a, b) => a.logDate.localeCompare(b.logDate));
+  const newPRs = detectPrHistory(sortedSets).filter((pr) => pr.logDate >= thisWeekStartIso && pr.logDate < nextWeekStartIso);
+
   return {
     weekStartIso: thisWeekStartIso,
     load: { current: loadThis?.totalLoad ?? null, previous: loadLast?.totalLoad ?? null, trend: trendDirection(loadThis?.totalLoad ?? null, loadLast?.totalLoad ?? null) },
     volume: { current: volumeCurrent, previous: volumePrevious, trend: trendDirection(volumeCurrent, volumePrevious) },
     readiness: { current: readinessCurrent, previous: readinessPrevious, trend: trendDirection(readinessCurrent, readinessPrevious) },
     nutritionAdherence: { daysLogged, totalDays: daysElapsedThisWeek(now) },
+    newPRs,
   };
 }
 
@@ -131,16 +145,17 @@ export async function getWeeklyDigestForUser(userId: string): Promise<WeeklyDige
   since.setDate(since.getDate() - 21);
   const sinceIso = since.toISOString().slice(0, 10);
 
-  const [activities, loggedSets, mealDates, healthEntries] = await Promise.all([
+  const [activities, loggedSets, mealDates, healthEntries, loggedSetsHistory] = await Promise.all([
     listStravaActivities(userId, 60).catch(() => []),
     listRecentLoggedSets(userId, 21).catch(() => []),
     listMealDatesSince(userId, sinceIso).catch(() => []),
     listHealthEntries(userId, 30).catch(() => []),
+    listLoggedSetsForRecords(userId).catch(() => []), // histórico completo (365d) — ver comentário em buildWeeklyDigest
   ]);
 
   const maxHr = estimateMaxHeartrate(activities);
   const loadWeeks = maxHr != null ? weeklyLoadSummary(activities, maxHr) : [];
   const volumeWeeks = weeklyVolumeByMuscleGroup(loggedSets);
 
-  return buildWeeklyDigest({ loadWeeks, volumeWeeks, mealDatesThisWeek: mealDates, healthEntries });
+  return buildWeeklyDigest({ loadWeeks, volumeWeeks, mealDatesThisWeek: mealDates, healthEntries, loggedSetsHistory });
 }

@@ -55,6 +55,12 @@ const SLIDES: Slide[] = [
     body: 'Sua meta de carboidrato sugerida muda com o volume de treino do dia — mais em dias pesados, menos em dias de descanso. E se você marcar uma prova, a gente já calcula em que fase do taper você está.',
   },
   {
+    icon: 'award',
+    eyebrow: 'PRs · RELATÓRIO · DOR',
+    title: 'Acompanhe sua evolução',
+    body: 'Toda série com peso e reps vira um 1RM estimado — e a gente avisa na hora quando é recorde novo (em Mais > PRs). O Relatório Semanal junta carga, volume, prontidão e nutrição numa visão só. E se sentir dor ou desconforto, registre em Mais > Dor — ajuda a validar se os alertas de carga estão de fato evitando lesão.',
+  },
+  {
     icon: 'flag',
     eyebrow: 'PRONTO',
     title: 'Bora começar',

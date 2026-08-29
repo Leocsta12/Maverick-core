@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { getWeeklyDigestForUser, TREND_LABELS, type WeeklyDigest, type WeeklyTrend } from '../../src/lib/weeklyDigest';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
@@ -74,7 +75,23 @@ export default function Report() {
       ) : !digest ? (
         <Text style={styles.emptyText}>Não foi possível carregar o relatório agora.</Text>
       ) : (
-        <View style={styles.grid}>
+        <>
+          {digest.newPRs.length > 0 && (
+            <View style={styles.prBanner}>
+              <Feather name="award" size={18} color={colors.ignition} />
+              <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                <Text style={styles.prBannerTitle}>
+                  {digest.newPRs.length === 1 ? 'Novo recorde essa semana!' : `${digest.newPRs.length} novos recordes essa semana!`}
+                </Text>
+                <Text style={styles.prBannerText}>
+                  {digest.newPRs
+                    .map((pr) => `${pr.exerciseName} (${Math.round(pr.estimated1RM)}kg)`)
+                    .join(' · ')}
+                </Text>
+              </View>
+            </View>
+          )}
+          <View style={styles.grid}>
           <TrendCard label="CARGA DE TREINO" data={digest.load} />
           <TrendCard label="VOLUME (SÉRIES)" data={digest.volume} />
           <TrendCard label="PRONTIDÃO" data={digest.readiness} />
@@ -85,7 +102,8 @@ export default function Report() {
             </Text>
             <Text style={styles.cardTrend}>dias com refeição registrada</Text>
           </View>
-        </View>
+          </View>
+        </>
       )}
 
       <Text style={styles.footnote}>
@@ -101,6 +119,18 @@ const styles = StyleSheet.create({
   title: { fontFamily: typography.display, fontSize: 24, color: colors.textPrimary, marginTop: 4 },
   subtitle: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted, marginTop: 6, marginBottom: spacing.lg },
   emptyText: { fontFamily: typography.body, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  prBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ignitionMuted,
+    borderWidth: 1,
+    borderColor: colors.ignition,
+    borderRadius: radius.md,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.md,
+  },
+  prBannerTitle: { fontFamily: typography.bodySemiBold, fontSize: 14, color: colors.textPrimary },
+  prBannerText: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   card: {
     width: '47%',

@@ -2,6 +2,7 @@ import { buildWeeklyDigest, trendDirection } from '../weeklyDigest';
 import type { WeeklyLoad } from '../trainingLoad';
 import type { WeeklyMuscleVolume } from '../muscleVolume';
 import type { HealthEntry } from '../health';
+import type { LoggedSet } from '../personalRecords';
 
 // Quinta-feira, 2024-06-13 — semana atual começa segunda 2024-06-10.
 const NOW = new Date('2024-06-13T12:00:00');
@@ -53,7 +54,7 @@ describe('buildWeeklyDigest', () => {
   ];
 
   it('pega carga e volume da semana atual/anterior pela data certa, com tendência derivada', () => {
-    const digest = buildWeeklyDigest({ loadWeeks, volumeWeeks, mealDatesThisWeek: [], healthEntries: [], now: NOW });
+    const digest = buildWeeklyDigest({ loadWeeks, volumeWeeks, mealDatesThisWeek: [], healthEntries: [], loggedSetsHistory: [], now: NOW });
     expect(digest.weekStartIso).toBe('2024-06-10');
     expect(digest.load).toEqual({ current: 260, previous: 200, trend: 'subindo' });
     expect(digest.volume).toEqual({ current: 9, previous: 12, trend: 'caindo' });
@@ -65,6 +66,7 @@ describe('buildWeeklyDigest', () => {
       volumeWeeks: [],
       mealDatesThisWeek: ['2024-06-10', '2024-06-11', '2024-06-11', '2024-06-03'], // duplicata + data de outra semana
       healthEntries: [],
+      loggedSetsHistory: [],
       now: NOW, // quinta = 4 dias decorridos na semana
     });
     expect(digest.nutritionAdherence).toEqual({ daysLogged: 2, totalDays: 4 });
@@ -72,7 +74,7 @@ describe('buildWeeklyDigest', () => {
 
   it('domingo conta como 7 dias decorridos (semana completa)', () => {
     const sunday = new Date('2024-06-16T12:00:00');
-    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries: [], now: sunday });
+    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries: [], loggedSetsHistory: [], now: sunday });
     expect(digest.nutritionAdherence.totalDays).toBe(7);
   });
 
@@ -82,7 +84,7 @@ describe('buildWeeklyDigest', () => {
       healthEntry('2024-06-10', { sleepHours: 4, steps: 2000 }), // semana atual — score baixo
       healthEntry('2024-06-11', { sleepHours: 4, steps: 2000 }),
     ];
-    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries, now: NOW });
+    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries, loggedSetsHistory: [], now: NOW });
     expect(digest.readiness.current).not.toBeNull();
     expect(digest.readiness.previous).not.toBeNull();
     expect(digest.readiness.current!).toBeLessThan(digest.readiness.previous!);
@@ -90,10 +92,30 @@ describe('buildWeeklyDigest', () => {
   });
 
   it('sem nenhum dado, tudo vem null/vazio sem quebrar', () => {
-    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries: [], now: NOW });
+    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries: [], loggedSetsHistory: [], now: NOW });
     expect(digest.load).toEqual({ current: null, previous: null, trend: 'estavel' });
     expect(digest.volume).toEqual({ current: null, previous: null, trend: 'estavel' });
     expect(digest.readiness).toEqual({ current: null, previous: null, trend: 'estavel' });
     expect(digest.nutritionAdherence).toEqual({ daysLogged: 0, totalDays: 4 });
+    expect(digest.newPRs).toEqual([]);
+  });
+
+  it('newPRs só lista recordes batidos DENTRO da semana atual', () => {
+    const loggedSetsHistory: LoggedSet[] = [
+      { exerciseId: 'supino', exerciseName: 'Supino reto', weightKg: 60, repsDone: 8, logDate: '2024-05-20' }, // PR antigo, fora da semana
+      { exerciseId: 'supino', exerciseName: 'Supino reto', weightKg: 65, repsDone: 8, logDate: '2024-06-11' }, // PR novo, dentro da semana atual
+      { exerciseId: 'agachamento', exerciseName: 'Agachamento livre', weightKg: 100, repsDone: 5, logDate: '2024-06-12' }, // primeira vez = PR
+    ];
+    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries: [], loggedSetsHistory, now: NOW });
+    expect(digest.newPRs.map((pr) => pr.exerciseName).sort()).toEqual(['Agachamento livre', 'Supino reto']);
+  });
+
+  it('não conta como PR novo uma série que não bateu o recorde anterior, mesmo dentro da semana', () => {
+    const loggedSetsHistory: LoggedSet[] = [
+      { exerciseId: 'supino', exerciseName: 'Supino reto', weightKg: 80, repsDone: 8, logDate: '2024-05-20' }, // recorde alto, antigo
+      { exerciseId: 'supino', exerciseName: 'Supino reto', weightKg: 60, repsDone: 8, logDate: '2024-06-11' }, // abaixo do recorde, dentro da semana
+    ];
+    const digest = buildWeeklyDigest({ loadWeeks: [], volumeWeeks: [], mealDatesThisWeek: [], healthEntries: [], loggedSetsHistory, now: NOW });
+    expect(digest.newPRs).toEqual([]);
   });
 });

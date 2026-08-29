@@ -6,6 +6,7 @@ import { listStravaActivities } from './strava';
 import { acuteChronicRatio, estimateMaxHeartrate, weeklyLoadSummary, type LoadRisk } from './trainingLoad';
 import { detectDeloadStatus } from './periodization';
 import { computeReadiness } from './readiness';
+import { listPainEntries } from './painLog';
 
 /**
  * Maverick Coach — painel de todos os atletas. "Check-in" aqui não é uma
@@ -29,16 +30,22 @@ export type AthleteOverview = {
   readinessScore: number | null;
   acwrRisk: LoadRisk | null;
   deloadRecommended: boolean;
+  /** Registros de dor com severidade >= 7 (ver painLog.ts) nos últimos 14 dias. */
+  recentSeverePainCount: number;
 };
 
+const SEVERE_PAIN_THRESHOLD = 7;
+const RECENT_PAIN_WINDOW_DAYS = 14;
+
 export async function getAthleteOverview(athleteId: string): Promise<AthleteOverview> {
-  const [healthEntries, missionDate, workoutDate, nutritionDate, activities, recentAvgRpe] = await Promise.all([
+  const [healthEntries, missionDate, workoutDate, nutritionDate, activities, recentAvgRpe, painEntries] = await Promise.all([
     listHealthEntries(athleteId, 30),
     getLatestCompletionDate(athleteId),
     getLatestLogDate(athleteId),
     getLatestMealDate(athleteId),
     listStravaActivities(athleteId, 60).catch(() => []), // atleta pode nunca ter conectado o Strava
     getRecentAverageRpe(athleteId).catch(() => null),
+    listPainEntries(athleteId, 30).catch(() => []),
   ]);
 
   const dates = [healthEntries[0]?.entryDate, missionDate, workoutDate, nutritionDate].filter(
@@ -61,7 +68,18 @@ export async function getAthleteOverview(athleteId: string): Promise<AthleteOver
 
   const readiness = computeReadiness({ recoveryScore, acwrRisk, recentAvgRpe });
 
-  return { score: recoveryScore, lastCheckInDate, readinessScore: readiness.score, acwrRisk, deloadRecommended };
+  const recentSeverePainCount = painEntries.filter(
+    (p) => p.severity >= SEVERE_PAIN_THRESHOLD && daysSince(p.entryDate) <= RECENT_PAIN_WINDOW_DAYS
+  ).length;
+
+  return {
+    score: recoveryScore,
+    lastCheckInDate,
+    readinessScore: readiness.score,
+    acwrRisk,
+    deloadRecommended,
+    recentSeverePainCount,
+  };
 }
 
 export function daysSince(dateIso: string): number {
@@ -99,16 +117,37 @@ export function athleteRiskStatus(overview: AthleteOverview): { label: string; s
   return { label: 'Carga em dia', severity: 'ok' };
 }
 
+export type PainFlagSeverity = 'alto' | 'nenhum';
+
+/**
+ * Terceira dimensão do painel — dor de verdade JÁ ACONTECEU, diferente do
+ * risco de carga (que é uma previsão baseada em ACWR/deload). É o sinal
+ * mais concreto que existe pra validar se os alertas de risco estão
+ * funcionando (ver src/lib/painLog.ts) — por isso pesa mais que risco
+ * previsto no attentionRank abaixo.
+ */
+export function painFlagStatus(overview: AthleteOverview): { label: string; severity: PainFlagSeverity } {
+  if (overview.recentSeverePainCount === 0) return { label: 'Sem dor forte recente', severity: 'nenhum' };
+  return {
+    label: `${overview.recentSeverePainCount} registro${overview.recentSeverePainCount > 1 ? 's' : ''} de dor forte`,
+    severity: 'alto',
+  };
+}
+
 /**
  * Prioridade única pra ordenar o painel de todos os atletas — combina as
- * duas dimensões (risco de treino e engajamento). Risco de carga alto
- * vem antes até de "sumiu do app": é o sinal mais próximo de "pode se
- * machucar", o que importa mais pro treinador do que "não abriu o app".
- * Maior número = mais urgente.
+ * três dimensões (dor relatada, risco de treino previsto e engajamento).
+ * Dor forte já relatada vem em primeiro lugar: é o sinal mais concreto
+ * que existe, não uma previsão. Risco de carga alto vem antes até de
+ * "sumiu do app": é o segundo sinal mais próximo de "pode se machucar",
+ * o que importa mais pro treinador do que "não abriu o app". Maior
+ * número = mais urgente.
  */
 export function attentionRank(overview: AthleteOverview): number {
+  const pain = painFlagStatus(overview).severity;
   const risk = athleteRiskStatus(overview).severity;
   const checkIn = checkInStatus(overview.lastCheckInDate).severity;
+  if (pain === 'alto') return 5;
   if (risk === 'alto') return 4;
   if (checkIn === 'stale') return 3;
   if (risk === 'atencao') return 2;

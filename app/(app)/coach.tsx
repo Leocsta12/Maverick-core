@@ -24,7 +24,9 @@ import {
   attentionRank,
   checkInStatus,
   getAthleteOverview,
+  painFlagStatus,
 } from '../../src/lib/coachOverview';
+import { listPainEntries, severityLabel, type PainEntry } from '../../src/lib/painLog';
 import { HealthEntry, computeMaverickScore, deriveInsight, listHealthEntries } from '../../src/lib/health';
 import {
   MissionCompletion,
@@ -50,6 +52,12 @@ import { WorkoutWeek } from '../../src/components/WorkoutWeek';
 
 type PendingItem = CoachLink & { counterpart: LinkedPerson; iAmCoach: boolean };
 type AthleteItem = { linkId: string; athlete: LinkedPerson };
+
+function painSeverityColor(severity: number): string {
+  if (severity <= 3) return colors.success;
+  if (severity <= 6) return colors.warning;
+  return colors.danger;
+}
 
 export default function Coach() {
   const { user } = useAuth();
@@ -92,7 +100,17 @@ export default function Coach() {
           try {
             return [a.athlete.id, await getAthleteOverview(a.athlete.id)] as const;
           } catch {
-            return [a.athlete.id, { score: null, lastCheckInDate: null }] as const;
+            return [
+              a.athlete.id,
+              {
+                score: null,
+                lastCheckInDate: null,
+                readinessScore: null,
+                acwrRisk: null,
+                deloadRecommended: false,
+                recentSeverePainCount: 0,
+              },
+            ] as const;
           }
         })
       )
@@ -149,7 +167,14 @@ export default function Coach() {
   const selectedAthlete = athletes.find((a) => a.athlete.id === selectedAthleteId);
 
   const overviewOf = (athleteId: string): AthleteOverview =>
-    overviews[athleteId] ?? { score: null, lastCheckInDate: null, readinessScore: null, acwrRisk: null, deloadRecommended: false };
+    overviews[athleteId] ?? {
+      score: null,
+      lastCheckInDate: null,
+      readinessScore: null,
+      acwrRisk: null,
+      deloadRecommended: false,
+      recentSeverePainCount: 0,
+    };
 
   // Ordena pela urgência combinada (risco de treino + check-in) — ver
   // attentionRank em coachOverview.ts pro raciocínio de qual sinal vence
@@ -231,6 +256,7 @@ export default function Coach() {
           const overview = overviews[item.athlete.id];
           const status = checkInStatus(overview?.lastCheckInDate ?? null);
           const risk = athleteRiskStatus(overviewOf(item.athlete.id));
+          const pain = painFlagStatus(overviewOf(item.athlete.id));
           const showRiskBadge = risk.severity === 'alto' || risk.severity === 'atencao';
           return (
             <Pressable
@@ -247,6 +273,12 @@ export default function Coach() {
                     {isLoadingOverviews && !overview ? 'Carregando…' : status.label}
                   </Text>
                 </View>
+                {!isLoadingOverviews && pain.severity === 'alto' && (
+                  <View style={[styles.riskBadge, styles.riskBadge_alto]}>
+                    <Feather name="alert-circle" size={10} color={colors.danger} />
+                    <Text style={[styles.riskBadgeText, { color: colors.danger }]}>{pain.label}</Text>
+                  </View>
+                )}
                 {!isLoadingOverviews && showRiskBadge && (
                   <View style={[styles.riskBadge, styles[`riskBadge_${risk.severity}`]]}>
                     <Feather
@@ -332,6 +364,7 @@ export function AthleteDetail({
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [painEntries, setPainEntries] = useState<PainEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -348,8 +381,9 @@ export function AthleteDetail({
       listMeals(athleteId, today),
       listWaterLogs(athleteId, today),
       getGoals(athleteId),
+      listPainEntries(athleteId, 15).catch(() => []),
     ])
-      .then(([entries, habitsList, completionsList, photosList, meals, waterLogs, goals]) => {
+      .then(([entries, habitsList, completionsList, photosList, meals, waterLogs, goals, pain]) => {
         if (!active) return;
         setHealthEntries(entries);
         setHabits(habitsList);
@@ -358,6 +392,7 @@ export function AthleteDetail({
         setTodayMeals(meals);
         setNutritionGoals(goals);
         setNutritionTotals(computeDailyTotals(meals, waterLogs));
+        setPainEntries(pain);
       })
       .catch(() => showAlert('Não foi possível carregar os dados desse atleta.'))
       .finally(() => active && setIsLoading(false));
@@ -427,6 +462,27 @@ export function AthleteDetail({
         </View>
       </View>
       <Text style={styles.detailInsight}>{deriveInsight(score)}</Text>
+
+      {painEntries.length > 0 && (
+        <View style={styles.painSection}>
+          <Text style={styles.detailSubtitle}>Dor / desconforto (últimos 15 registros)</Text>
+          {painEntries.map((entry) => (
+            <View key={entry.id} style={styles.painRow}>
+              <View style={[styles.severityBadgeSmall, { borderColor: painSeverityColor(entry.severity) }]}>
+                <Text style={[styles.severityBadgeSmallText, { color: painSeverityColor(entry.severity) }]}>{entry.severity}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.habitLine}>
+                  {entry.bodyPart}
+                  {entry.exerciseName ? ` · ${entry.exerciseName}` : ''} — {severityLabel(entry.severity)}
+                </Text>
+                {entry.notes ? <Text style={styles.painNotes}>{entry.notes}</Text> : null}
+              </View>
+              <Text style={styles.painDate}>{entry.entryDate.split('-').slice(1).reverse().join('/')}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       {habits.length > 0 && (
         <View style={{ marginTop: spacing.md }}>
@@ -614,6 +670,19 @@ const styles = StyleSheet.create({
   detailStatLabel: { fontFamily: typography.mono, fontSize: 9, color: colors.steel, letterSpacing: 1 },
   detailInsight: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 18 },
   habitLine: { fontFamily: typography.body, fontSize: 13, color: colors.textPrimary, marginBottom: 2 },
+  painSection: { marginTop: spacing.md },
+  painRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+  severityBadgeSmall: {
+    width: 22,
+    height: 22,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  severityBadgeSmallText: { fontFamily: typography.mono, fontSize: 10 },
+  painNotes: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginTop: 1 },
+  painDate: { fontFamily: typography.mono, fontSize: 10, color: colors.steel },
   detailSubtitle: {
     fontFamily: typography.bodySemiBold,
     fontSize: 13,

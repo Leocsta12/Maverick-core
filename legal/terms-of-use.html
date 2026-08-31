@@ -1,0 +1,491 @@
+<title>Termos de Uso Maverick</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FAF8F4;
+    --surface: #FFFFFF;
+    --surface-sunken: #F2F0EA;
+    --border: #E4E0D6;
+    --text: #1C1A16;
+    --text-muted: #6B6559;
+    --accent: #C43D10;
+    --accent-bg: rgba(230, 74, 21, 0.08);
+    --accent-strong: #FF5A1F;
+    --danger: #B23A3A;
+    --danger-bg: rgba(178, 58, 58, 0.08);
+
+    --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0D0F11;
+      --surface: #16191C;
+      --surface-sunken: #111315;
+      --border: #272C31;
+      --text: #F3F1EC;
+      --text-muted: #9AA1A6;
+      --accent: #FF8A54;
+      --accent-bg: rgba(255, 90, 31, 0.14);
+      --accent-strong: #FF5A1F;
+      --danger: #FF8A8A;
+      --danger-bg: rgba(255, 138, 138, 0.1);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0D0F11;
+    --surface: #16191C;
+    --surface-sunken: #111315;
+    --border: #272C31;
+    --text: #F3F1EC;
+    --text-muted: #9AA1A6;
+    --accent: #FF8A54;
+    --accent-bg: rgba(255, 90, 31, 0.14);
+    --accent-strong: #FF5A1F;
+    --danger: #FF8A8A;
+    --danger-bg: rgba(255, 138, 138, 0.1);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+  }
+
+  header.masthead {
+    margin-bottom: 48px;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .eyebrow .mark {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--accent-strong);
+    display: inline-block;
+    transform: rotate(45deg);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 14px 0 12px;
+    text-wrap: balance;
+  }
+
+  .dek {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    max-width: 58ch;
+    margin: 0 0 24px;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  .meta-chip {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+
+  .lede {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-strong);
+    border-radius: 4px;
+    padding: 20px 22px;
+    margin: 32px 0 8px;
+    font-size: 0.98rem;
+    color: var(--text);
+  }
+  .lede strong { color: var(--text); }
+
+  nav.toc {
+    margin: 40px 0 56px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    padding: 22px 24px;
+  }
+
+  nav.toc .toc-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+  }
+
+  nav.toc li a {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.92rem;
+    padding: 2px 0;
+    border-bottom: 1px solid transparent;
+  }
+  nav.toc li a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  nav.toc li a .n {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  section.article {
+    margin: 0 0 44px;
+    padding-top: 8px;
+    scroll-margin-top: 24px;
+  }
+
+  section.article + section.article {
+    border-top: 1px solid var(--border);
+    padding-top: 40px;
+  }
+
+  .h2-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .h2-num {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.4rem;
+    letter-spacing: -0.005em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 1.05rem;
+    margin: 26px 0 10px;
+  }
+
+  p { margin: 0 0 16px; max-width: 68ch; }
+  p:last-child { margin-bottom: 0; }
+
+  ul, ol.plain { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+  li { margin-bottom: 8px; }
+  li:last-child { margin-bottom: 0; }
+
+  .callout {
+    background: var(--accent-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-size: 0.92rem;
+    margin: 4px 0 20px;
+  }
+  .callout strong { color: var(--text); }
+
+  .warning {
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 4px 0 20px;
+  }
+  .warning .warning-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--danger);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .warning p { margin-bottom: 10px; }
+  .warning p:last-child { margin-bottom: 0; }
+  .warning strong { color: var(--text); }
+
+  .rights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 4px 0 8px;
+  }
+  .right-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--surface);
+    font-size: 0.9rem;
+  }
+  .right-item .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  footer.contact {
+    margin-top: 56px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  footer.contact .block .k {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  footer.contact .block .v {
+    font-size: 0.95rem;
+  }
+  footer.contact a { color: var(--accent); text-decoration: none; }
+  footer.contact a:hover { text-decoration: underline; }
+
+  a.inline { color: var(--accent); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+  a.inline:hover { text-decoration-color: var(--accent); }
+
+  @media (max-width: 560px) {
+    nav.toc ol { grid-template-columns: 1fr; }
+    .wrap { padding: 40px 18px 72px; }
+  }
+
+  ::selection { background: var(--accent-bg); }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow"><span class="mark"></span> MAVERICK PERFORMANCE</div>
+    <h1>Termos de Uso</h1>
+    <p class="dek">As regras de uso do Maverick Core — o que você pode esperar da gente, e o que a gente espera de você.</p>
+    <div class="meta-row">
+      <span class="meta-chip">Vigente desde 29/08/2026</span>
+      <span class="meta-chip">Versão 1.0</span>
+      <span class="meta-chip">Lei aplicável: legislação brasileira</span>
+    </div>
+  </header>
+
+  <div class="lede">
+    <strong>Resumo rápido:</strong> o Maverick é uma ferramenta de apoio ao treino, saúde e nutrição — não substitui orientação médica nem um treinador certificado presencial. Você é responsável pelas decisões que toma com base no que o app sugere. O uso é gratuito hoje; se isso mudar no futuro, avisamos antes de cobrar qualquer coisa de quem já tem conta. Você pode encerrar sua conta quando quiser. Os detalhes de cada regra estão abaixo.
+  </div>
+
+  <nav class="toc" aria-label="Sumário">
+    <div class="toc-title">Nestes termos</div>
+    <ol>
+      <li><a href="#aceitacao"><span class="n">01</span> Aceitação dos termos</a></li>
+      <li><a href="#elegibilidade"><span class="n">02</span> Quem pode usar</a></li>
+      <li><a href="#conta"><span class="n">03</span> Sua conta</a></li>
+      <li><a href="#treinador"><span class="n">04</span> Vínculo treinador-atleta</a></li>
+      <li><a href="#saude"><span class="n">05</span> Aviso de saúde</a></li>
+      <li><a href="#ia"><span class="n">06</span> Conteúdo gerado por IA</a></li>
+      <li><a href="#uso-aceitavel"><span class="n">07</span> Uso aceitável</a></li>
+      <li><a href="#propriedade"><span class="n">08</span> Propriedade intelectual e seu conteúdo</a></li>
+      <li><a href="#terceiros"><span class="n">09</span> Integrações de terceiros</a></li>
+      <li><a href="#preco"><span class="n">10</span> Preço, cancelamento e suspensão</a></li>
+      <li><a href="#responsabilidade"><span class="n">11</span> Garantias e responsabilidade</a></li>
+      <li><a href="#alteracoes"><span class="n">12</span> Lei aplicável e alterações</a></li>
+    </ol>
+  </nav>
+
+  <section class="article" id="aceitacao">
+    <div class="h2-row"><span class="h2-num">01</span><h2>Aceitação dos termos</h2></div>
+    <p>
+      Ao criar uma conta ou usar o Maverick Core (também chamado de Maverick Performance), você concorda com estes Termos de Uso e com a nossa <a class="inline" href="https://claude.ai/code/artifact/5a475e50-4a11-4cbe-97a9-37c7e7ab80bb">Política de Privacidade</a>. Se você não concorda com alguma parte, não deve usar o aplicativo.
+    </p>
+  </section>
+
+  <section class="article" id="elegibilidade">
+    <div class="h2-row"><span class="h2-num">02</span><h2>Quem pode usar</h2></div>
+    <p>
+      O Maverick Core é destinado a pessoas com 18 anos ou mais. Ao criar uma conta, você declara ter pelo menos 18 anos e capacidade legal para aceitar estes termos. Se identificarmos uma conta de menor de idade, ela será encerrada — veja também a seção de Menores na Política de Privacidade.
+    </p>
+  </section>
+
+  <section class="article" id="conta">
+    <div class="h2-row"><span class="h2-num">03</span><h2>Sua conta</h2></div>
+    <p>Ao criar e manter sua conta, você concorda em:</p>
+    <ul>
+      <li>Fornecer informações verdadeiras (nome, e-mail) e mantê-las atualizadas.</li>
+      <li>Manter sua senha em sigilo — você é responsável por qualquer atividade que aconteça na sua conta.</li>
+      <li>Nos avisar imediatamente se suspeitar de acesso não autorizado à sua conta.</li>
+      <li>Não compartilhar seu login com outra pessoa. Se quiser que alguém acompanhe seu treino, use o vínculo de treinador — não precisa dividir credenciais.</li>
+    </ul>
+  </section>
+
+  <section class="article" id="treinador">
+    <div class="h2-row"><span class="h2-num">04</span><h2>Vínculo treinador-atleta</h2></div>
+    <p>
+      O Maverick Core é a ferramenta que conecta treinador e atleta — não somos parte da relação entre vocês. O plano de treino que um treinador monta para um atleta é responsabilidade do próprio treinador, não do Maverick Core.
+    </p>
+    <p>
+      Não verificamos credenciais profissionais (CREF ou equivalente) de quem se cadastra como treinador no app. Cabe a você, como atleta, confirmar por conta própria a qualificação de quem está te orientando antes de seguir as recomendações dessa pessoa.
+    </p>
+    <p>
+      Qualquer um dos dois lados pode desfazer o vínculo a qualquer momento diretamente no app, encerrando o compartilhamento de dados imediatamente.
+    </p>
+  </section>
+
+  <section class="article" id="saude">
+    <div class="h2-row"><span class="h2-num">05</span><h2>Aviso de saúde</h2></div>
+    <div class="warning">
+      <div class="warning-label">⚠ Leia com atenção</div>
+      <p><strong>O Maverick Core não presta serviço médico, nutricional ou de educação física certificada.</strong> Somos um aplicativo de registro e cálculo de métricas — não um profissional de saúde.</p>
+      <p>Consulte um médico antes de iniciar qualquer programa de exercício ou mudança relevante de alimentação, especialmente se você tiver alguma condição de saúde pré-existente, estiver gestante, ou não praticar atividade física há muito tempo.</p>
+      <p>Métricas como o Maverick Score, a Prontidão de Treino, o ACWR (risco de carga) e as sugestões de progressão de carga são <strong>estimativas calculadas a partir dos dados que você mesmo registra</strong> — não são diagnóstico médico nem substituem avaliação profissional presencial.</p>
+      <p>Atividade física tem risco inerente de lesão. Ao usar o app e seguir qualquer sugestão de treino, nutrição ou recuperação, <strong>você assume esse risco por sua conta</strong>. Pare imediatamente e procure ajuda médica se sentir dor, tontura, falta de ar ou qualquer sintoma fora do normal durante o treino.</p>
+    </div>
+  </section>
+
+  <section class="article" id="ia">
+    <div class="h2-row"><span class="h2-num">06</span><h2>Conteúdo gerado por IA</h2></div>
+    <p>
+      O Maverick Coach IA (geração de plano de treino) e o Maverick Vision (análise de fotos de evolução) usam a API da Anthropic (Claude) para gerar sugestões automaticamente, a seu pedido.
+    </p>
+    <p>
+      Esse conteúdo pode conter imprecisões — é uma sugestão pensada a partir do que você informou, não uma prescrição de um profissional certificado avaliando você pessoalmente. Você é responsável por avaliar criticamente qualquer sugestão gerada por IA e ajustá-la (ou descartá-la) conforme sua própria condição física e bom senso.
+    </p>
+  </section>
+
+  <section class="article" id="uso-aceitavel">
+    <div class="h2-row"><span class="h2-num">07</span><h2>Uso aceitável</h2></div>
+    <p>Ao usar o Maverick Core, você concorda em não:</p>
+    <ul>
+      <li>Usar o app para qualquer finalidade ilegal ou não autorizada.</li>
+      <li>Tentar acessar dados de outros usuários sem autorização, ou contornar as permissões do app (RLS, vínculos de coach).</li>
+      <li>Fazer engenharia reversa, descompilar ou tentar extrair o código-fonte do aplicativo.</li>
+      <li>Sobrecarregar deliberadamente a infraestrutura do app (varreduras automatizadas, scraping, ataques de negação de serviço).</li>
+      <li>Enviar, nas fotos de progresso ou em qualquer campo de texto, conteúdo ilegal, ofensivo ou que viole direitos de terceiros.</li>
+    </ul>
+  </section>
+
+  <section class="article" id="propriedade">
+    <div class="h2-row"><span class="h2-num">08</span><h2>Propriedade intelectual e seu conteúdo</h2></div>
+    <p>
+      O código, o design e a marca "Maverick Performance" / "Maverick Core" pertencem ao criador do aplicativo. Você não adquire nenhum direito sobre eles ao usar o app, além do direito de uso pessoal descrito nestes termos.
+    </p>
+    <p>
+      O conteúdo que você registra — fotos de progresso, dados de treino, saúde e nutrição — continua sendo seu. Ao usar o app, você nos concede apenas uma licença limitada para armazenar, processar e exibir esse conteúdo dentro do próprio Maverick Core, unicamente para fazer o app funcionar (incluindo exibi-lo ao seu treinador vinculado, quando aplicável).
+    </p>
+  </section>
+
+  <section class="article" id="terceiros">
+    <div class="h2-row"><span class="h2-num">09</span><h2>Integrações de terceiros</h2></div>
+    <p>
+      Se você conectar sua conta do Strava, também passa a estar sujeito aos termos de uso da Strava para essa integração. Não somos responsáveis pela disponibilidade, precisão ou continuidade dos dados fornecidos por serviços de terceiros integrados ao app.
+    </p>
+  </section>
+
+  <section class="article" id="preco">
+    <div class="h2-row"><span class="h2-num">10</span><h2>Preço, cancelamento e suspensão</h2></div>
+    <p>
+      O uso do Maverick Core é gratuito no momento. Podemos vir a introduzir planos pagos no futuro — se isso acontecer, avisaremos com antecedência razoável antes de cobrar qualquer valor de contas já existentes.
+    </p>
+    <p>
+      Você pode encerrar sua conta a qualquer momento (veja "Retenção e exclusão" na Política de Privacidade). Podemos suspender ou encerrar contas que violem estes termos; sempre que possível, avisaremos antes.
+    </p>
+  </section>
+
+  <section class="article" id="responsabilidade">
+    <div class="h2-row"><span class="h2-num">11</span><h2>Garantias e responsabilidade</h2></div>
+    <p>
+      O Maverick Core é fornecido "como está", sem garantia de disponibilidade ininterrupta, ausência de erros ou de que os cálculos e sugestões sejam adequados a toda situação individual.
+    </p>
+    <p>
+      Na máxima extensão permitida pela lei brasileira, não somos responsáveis por danos indiretos, incidentais ou consequenciais decorrentes do uso do aplicativo — incluindo lesões físicas resultantes de seguir sugestões de treino, nutrição ou recuperação apresentadas pelo app ou por um treinador vinculado.
+    </p>
+  </section>
+
+  <section class="article" id="alteracoes">
+    <div class="h2-row"><span class="h2-num">12</span><h2>Lei aplicável e alterações</h2></div>
+    <p>
+      Estes termos são regidos pela legislação brasileira. Eventuais disputas serão resolvidas no foro do domicílio do usuário, conforme o Código de Defesa do Consumidor.
+    </p>
+    <p>
+      Podemos atualizar estes termos conforme o app evolui. Mudanças relevantes serão comunicadas dentro do próprio aplicativo antes de entrarem em vigor. A data no topo desta página sempre reflete a versão mais recente.
+    </p>
+  </section>
+
+  <footer class="contact" id="contato">
+    <div class="block">
+      <div class="k">Dúvidas sobre estes termos</div>
+      <div class="v"><a href="mailto:maverick@maverickperformance.club">maverick@maverickperformance.club</a></div>
+    </div>
+    <div class="block">
+      <div class="k">Aplicativo</div>
+      <div class="v">Maverick Performance</div>
+    </div>
+    <div class="block">
+      <div class="k">Documento</div>
+      <div class="v">Versão 1.0 — 29/08/2026</div>
+    </div>
+  </footer>
+
+</div>

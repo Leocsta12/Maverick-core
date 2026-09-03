@@ -1416,3 +1416,68 @@ create policy "pain_logs: delete own"
   using (auth.uid() = user_id);
 
 create index if not exists pain_logs_user_date_idx on public.pain_logs (user_id, entry_date desc);
+
+-- Maverick Endurance — plano semanal de corrida/bike/natação, prescrito
+-- pelo treinador (ou pelo próprio atleta, se autotreinado). Espelha o
+-- espírito de workout_plans/workout_plan_days pro lado de endurance: até
+-- aqui, tudo o que existia pra corrida/bike/natação era retrospectivo
+-- (sync do Strava + análise de carga/ACWR/zonas) — o atleta nunca sabia
+-- ANTES o que treinar, só via depois o que já tinha feito. Isso fecha
+-- essa lacuna com a mesma linguagem que treinador de endurance usa de
+-- verdade (tipo de treino, zona/pace alvo, volume, estrutura de
+-- intervalos), sem duplicar a hierarquia plano→dias→exercícios da
+-- musculação — aqui é uma tabela só, plana, por não precisar de um
+-- catálogo compartilhado (não existe "exercício" de corrida pra
+-- reaproveitar entre atletas como existe em public.exercises).
+create table if not exists public.endurance_plan_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  day_of_week smallint not null check (day_of_week between 0 and 6), -- 0 = domingo … 6 = sábado
+  sport text check (sport in ('corrida', 'bike', 'natacao', 'outro')),
+  workout_type text not null check (workout_type in ('rodagem', 'longao', 'intervalado', 'tempo_run', 'fartlek', 'regenerativo', 'prova', 'folga')),
+  target_zone smallint check (target_zone between 1 and 5),
+  target_pace text,
+  planned_distance_km numeric,
+  planned_duration_min integer,
+  structure_notes text,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.endurance_plan_sessions enable row level security;
+
+drop policy if exists "endurance_plan_sessions: select own or as coach" on public.endurance_plan_sessions;
+create policy "endurance_plan_sessions: select own or as coach"
+  on public.endurance_plan_sessions for select
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.coach_links cl
+      where cl.coach_id = auth.uid() and cl.athlete_id = endurance_plan_sessions.user_id and cl.status = 'accepted'
+    )
+  );
+
+-- Mesmo espírito de workout_plans: o treinador tem escrita aqui (não só
+-- leitura) — é o propósito do recurso, montar o treino do atleta. O
+-- próprio atleta também pode escrever (caso autotreinado, sem coach
+-- vinculado, ou pra ajustar algo pontual).
+drop policy if exists "endurance_plan_sessions: write own or as coach" on public.endurance_plan_sessions;
+create policy "endurance_plan_sessions: write own or as coach"
+  on public.endurance_plan_sessions for all
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.coach_links cl
+      where cl.coach_id = auth.uid() and cl.athlete_id = endurance_plan_sessions.user_id and cl.status = 'accepted'
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.coach_links cl
+      where cl.coach_id = auth.uid() and cl.athlete_id = endurance_plan_sessions.user_id and cl.status = 'accepted'
+    )
+  );
+
+create index if not exists endurance_plan_sessions_user_day_idx on public.endurance_plan_sessions (user_id, day_of_week, sort_order);

@@ -49,6 +49,7 @@ import {
 } from '../../src/lib/nutrition';
 import { VisionPhoto, analyzeVisionPhotos, listVisionPhotos } from '../../src/lib/vision';
 import { WorkoutWeek } from '../../src/components/WorkoutWeek';
+import { EnduranceWeek } from '../../src/components/EnduranceWeek';
 
 type PendingItem = CoachLink & { counterpart: LinkedPerson; iAmCoach: boolean };
 type AthleteItem = { linkId: string; athlete: LinkedPerson };
@@ -504,6 +505,9 @@ export function AthleteDetail({
         {canEdit ? 'Você pode montar e editar o treino semanal desse atleta.' : 'Só leitura — sem edição pelo painel de admin.'}
       </Text>
       <WorkoutWeek athleteUserId={athleteId} canEditPlan={canEdit} />
+
+      <Text style={styles.detailSubtitle}>Endurance (corrida/bike/natação)</Text>
+      <EnduranceWeek athleteUserId={athleteId} canEdit={canEdit} />
 
       <Text style={styles.detailSubtitle}>Nutrição hoje</Text>
       {todayMeals.length === 0 ? (

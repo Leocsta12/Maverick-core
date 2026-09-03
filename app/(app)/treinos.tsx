@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { WorkoutWeek } from '../../src/components/WorkoutWeek';
+import { EnduranceWeek } from '../../src/components/EnduranceWeek';
 
 export default function Treinos() {
   const { user } = useAuth();
@@ -27,6 +28,18 @@ export default function Treinos() {
       <Text style={styles.footnote}>
         Toque e segure num exercício pra removê-lo do dia. Fotos e vídeos de execução ficam salvos por
         exercício — adicione a foto ao cadastrar (em breve pela tela) ou peça pro seu treinador anexar.
+      </Text>
+
+      <Text style={[styles.title, { fontSize: 20, marginTop: spacing.xxl }]}>Endurance</Text>
+      <Text style={styles.footnote}>
+        Corrida, bike ou natação — o plano da semana que você ou seu treinador montaram. Toque num treino pra
+        editar, toque e segure pra remover.
+      </Text>
+      <EnduranceWeek athleteUserId={user.id} canEdit />
+
+      <Text style={styles.footnote}>
+        Sincronize suas atividades pelo Strava (em Health) pra comparar depois o que foi planejado com o que
+        você de fato treinou.
       </Text>
     </ScrollView>
   );

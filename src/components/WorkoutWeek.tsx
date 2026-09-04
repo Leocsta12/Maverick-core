@@ -7,6 +7,7 @@ import { colors, spacing, typography, radius } from '../theme/tokens';
 import { TextField } from './TextField';
 import { Button } from './Button';
 import { showAlert } from '../lib/alert';
+import { RestTimer } from './RestTimer';
 import { OfflineBanner } from './OfflineBanner';
 import { loadWithCache } from '../lib/offlineCache';
 import { flushOfflineQueue, markDayDoneOffline, markDayUndoneOffline, queuedWriteCount } from '../lib/offlineSync';
@@ -758,6 +759,16 @@ function SetLogger({
   const [sets, setSets] = useState<SetEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showTimer, setShowTimer] = useState(false);
+  const [timerKey, setTimerKey] = useState(0);
+
+  // Um cronômetro só por exercício — tocar o ícone de qualquer série
+  // reinicia (não empilha) o descanso, sempre voltando pra escolha de
+  // tempo (60/90/120/180s) em vez de continuar de onde um anterior parou.
+  const startTimer = () => {
+    setTimerKey((k) => k + 1);
+    setShowTimer(true);
+  };
 
   useEffect(() => {
     let active = true;
@@ -864,8 +875,12 @@ function SetLogger({
             placeholder="RPE"
             style={styles.setInput}
           />
+          <Pressable onPress={startTimer} hitSlop={8} style={styles.timerButton}>
+            <Feather name="clock" size={16} color={colors.steel} />
+          </Pressable>
         </View>
       ))}
+      {showTimer && <RestTimer key={timerKey} onClose={() => setShowTimer(false)} />}
       <View style={styles.setLoggerActions}>
         <Button label="+ série" variant="ghost" onPress={addSet} style={styles.smallButton} />
         <Button label="Salvar" onPress={handleSave} loading={isSaving} style={styles.smallButton} />
@@ -1097,6 +1112,7 @@ const styles = StyleSheet.create({
   setRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   setNumber: { fontFamily: typography.mono, fontSize: 12, color: colors.textMuted, width: 24 },
   setInput: { flex: 1, marginBottom: spacing.xs },
+  timerButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs },
   setLoggerActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   smallButton: { flex: 1, paddingVertical: spacing.sm },
   mediaEditor: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },

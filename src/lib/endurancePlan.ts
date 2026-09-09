@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { enduranceSportCategory, type EnduranceSportCategory } from './strava';
 
 /**
  * Maverick Endurance — plano semanal de corrida/bike/natação, prescrito
@@ -158,4 +159,64 @@ export function summarizeSession(session: EnduranceSession): string {
   if (session.targetZone != null) parts.push(`Z${session.targetZone}`);
   if (session.targetPace) parts.push(session.targetPace);
   return parts.join(' · ');
+}
+
+// --- Planejado × realizado --------------------------------------------------
+//
+// Fecha o ciclo do plano: uma sessão prescrita ("terça: 8km Z2") só vira
+// treino de verdade se comparada com o que o Strava sincronizou depois.
+// Reaproveita enduranceSportCategory (strava.ts) pra não duplicar a
+// classificação de tipo de atividade — só traduz o vocabulário PT-BR do
+// plano (corrida/bike/natação) pro vocabulário em inglês do Strava.
+
+function sportToCategory(sport: EnduranceSport | null): EnduranceSportCategory {
+  if (sport === 'corrida') return 'run';
+  if (sport === 'bike') return 'ride';
+  if (sport === 'natacao') return 'swim';
+  return 'other';
+}
+
+export type ActivityForMatch = {
+  sportType: string;
+  distanceMeters: number | null;
+  movingTimeSeconds: number | null;
+  startedAt: string; // ISO datetime
+};
+
+export type SessionMatchStatus = 'folga' | 'pendente' | 'cumprido' | 'nao_registrado';
+
+export type SessionMatch = {
+  status: SessionMatchStatus;
+  actualDistanceKm: number | null;
+  actualDurationMin: number | null;
+};
+
+/**
+ * Cruza uma sessão planejada (já resolvida pra uma data específica dessa
+ * semana) com as atividades reais sincronizadas do Strava. "Folga" nunca
+ * precisa de correspondência. Hoje e dias futuros ficam "pendente" (o
+ * dia ainda não terminou, não é justo cobrar já) — só datas ESTRITAMENTE
+ * passadas sem atividade correspondente viram "não registrado".
+ */
+export function matchSessionToActivity(
+  session: EnduranceSession,
+  dateIso: string,
+  activities: ActivityForMatch[],
+  todayIso: string
+): SessionMatch {
+  if (session.workoutType === 'folga') return { status: 'folga', actualDistanceKm: null, actualDurationMin: null };
+
+  const category = sportToCategory(session.sport);
+  const match = activities.find((a) => a.startedAt.slice(0, 10) === dateIso && enduranceSportCategory(a.sportType) === category);
+
+  if (match) {
+    return {
+      status: 'cumprido',
+      actualDistanceKm: match.distanceMeters != null ? Math.round((match.distanceMeters / 1000) * 10) / 10 : null,
+      actualDurationMin: match.movingTimeSeconds != null ? Math.round(match.movingTimeSeconds / 60) : null,
+    };
+  }
+
+  if (dateIso >= todayIso) return { status: 'pendente', actualDistanceKm: null, actualDurationMin: null };
+  return { status: 'nao_registrado', actualDistanceKm: null, actualDurationMin: null };
 }

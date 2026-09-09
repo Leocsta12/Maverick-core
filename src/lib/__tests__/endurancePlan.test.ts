@@ -1,4 +1,4 @@
-import { groupSessionsByDay, summarizeSession, type EnduranceSession } from '../endurancePlan';
+import { groupSessionsByDay, matchSessionToActivity, summarizeSession, type ActivityForMatch, type EnduranceSession } from '../endurancePlan';
 
 function session(overrides: Partial<EnduranceSession> = {}): EnduranceSession {
   return {
@@ -47,5 +47,48 @@ describe('summarizeSession', () => {
 
   it('só duração', () => {
     expect(summarizeSession(session({ plannedDurationMin: 45 }))).toBe('45min');
+  });
+});
+
+function activity(overrides: Partial<ActivityForMatch> = {}): ActivityForMatch {
+  return {
+    sportType: 'Run',
+    distanceMeters: 8200,
+    movingTimeSeconds: 2520, // 42min
+    startedAt: '2024-06-11T08:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('matchSessionToActivity', () => {
+  const TODAY = '2024-06-13'; // quinta
+
+  it('folga nunca precisa de correspondência', () => {
+    const result = matchSessionToActivity(session({ workoutType: 'folga' }), '2024-06-11', [], TODAY);
+    expect(result).toEqual({ status: 'folga', actualDistanceKm: null, actualDurationMin: null });
+  });
+
+  it('é "cumprido" quando acha atividade do mesmo esporte na mesma data, com distância/duração convertidas', () => {
+    const result = matchSessionToActivity(session({ sport: 'corrida' }), '2024-06-11', [activity()], TODAY);
+    expect(result).toEqual({ status: 'cumprido', actualDistanceKm: 8.2, actualDurationMin: 42 });
+  });
+
+  it('não confunde esportes diferentes na mesma data', () => {
+    const result = matchSessionToActivity(session({ sport: 'bike' }), '2024-06-11', [activity({ sportType: 'Run' })], TODAY);
+    expect(result.status).toBe('nao_registrado');
+  });
+
+  it('não confunde datas diferentes do mesmo esporte', () => {
+    const result = matchSessionToActivity(session({ sport: 'corrida' }), '2024-06-12', [activity({ startedAt: '2024-06-11T08:00:00Z' })], TODAY);
+    expect(result.status).toBe('nao_registrado');
+  });
+
+  it('é "pendente" (não "não registrado") pra hoje e dias futuros sem atividade ainda', () => {
+    expect(matchSessionToActivity(session(), TODAY, [], TODAY).status).toBe('pendente');
+    expect(matchSessionToActivity(session(), '2024-06-14', [], TODAY).status).toBe('pendente');
+  });
+
+  it('é "não registrado" só pra dias estritamente passados sem correspondência', () => {
+    expect(matchSessionToActivity(session(), '2024-06-10', [], TODAY).status).toBe('nao_registrado');
   });
 });

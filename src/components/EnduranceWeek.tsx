@@ -11,6 +11,7 @@ import {
   ENDURANCE_WORKOUT_TYPE_LABELS,
   groupSessionsByDay,
   listEnduranceSessions,
+  matchSessionToActivity,
   removeEnduranceSession,
   summarizeSession,
   updateEnduranceSession,
@@ -18,10 +19,33 @@ import {
   type EnduranceSport,
   type EnduranceWorkoutType,
   type NewEnduranceSession,
+  type SessionMatch,
 } from '../lib/endurancePlan';
 import { dayOfWeekName } from '../lib/workouts';
+import { listStravaActivities, type StravaActivity } from '../lib/strava';
 
 const DAY_ORDER = [0, 1, 2, 3, 4, 5, 6];
+
+// Mesma lógica de WorkoutWeek.tsx: resolve um dia-da-semana (0-6) pra
+// data real DESSA semana (a mais próxima, podendo ser antes ou depois de
+// hoje) — cada componente mantém sua própria cópia de propósito, é curto
+// demais pra valer a pena compartilhar entre dois arquivos.
+function dateForDayOfWeek(dayOfWeek: number): string {
+  const now = new Date();
+  const diff = dayOfWeek - now.getDay();
+  const target = new Date(now);
+  target.setDate(now.getDate() + diff);
+  return target.toISOString().slice(0, 10);
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const MATCH_LABELS: Record<Exclude<SessionMatch['status'], 'folga' | 'pendente'>, string> = {
+  cumprido: '✓ realizado',
+  nao_registrado: 'não registrado',
+};
 const SPORTS: EnduranceSport[] = ['corrida', 'bike', 'natacao', 'outro'];
 const WORKOUT_TYPES: EnduranceWorkoutType[] = [
   'rodagem',
@@ -40,6 +64,7 @@ type Props = { athleteUserId: string; canEdit: boolean };
 
 export function EnduranceWeek({ athleteUserId, canEdit }: Props) {
   const [sessions, setSessions] = useState<EnduranceSession[]>([]);
+  const [activities, setActivities] = useState<StravaActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openDay, setOpenDay] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,8 +73,14 @@ export function EnduranceWeek({ athleteUserId, canEdit }: Props) {
 
   const load = useCallback(() => {
     setIsLoading(true);
-    listEnduranceSessions(athleteUserId)
-      .then(setSessions)
+    Promise.all([
+      listEnduranceSessions(athleteUserId),
+      listStravaActivities(athleteUserId, 60).catch(() => []), // sem Strava conectado = sem comparação, não quebra o plano
+    ])
+      .then(([s, a]) => {
+        setSessions(s);
+        setActivities(a);
+      })
       .catch(() => showAlert('Não foi possível carregar o plano de endurance.'))
       .finally(() => setIsLoading(false));
   }, [athleteUserId]);
@@ -139,21 +170,32 @@ export function EnduranceWeek({ athleteUserId, canEdit }: Props) {
             {daySessions.length === 0 && !isFormOpen ? (
               <Text style={styles.restText}>—</Text>
             ) : (
-              daySessions.map((session) => (
-                <Pressable
-                  key={session.id}
-                  onPress={() => canEdit && startEdit(session)}
-                  onLongPress={() => canEdit && handleDelete(session)}
-                  style={styles.sessionCard}
-                >
-                  <View style={[styles.sportDot, styles[`sportDot_${session.sport ?? 'outro'}`]]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.sessionType}>{ENDURANCE_WORKOUT_TYPE_LABELS[session.workoutType]}</Text>
-                    {summarizeSession(session) ? <Text style={styles.sessionSummary}>{summarizeSession(session)}</Text> : null}
-                    {session.structureNotes ? <Text style={styles.sessionNotes}>{session.structureNotes}</Text> : null}
-                  </View>
-                </Pressable>
-              ))
+              daySessions.map((session) => {
+                const match = matchSessionToActivity(session, dateForDayOfWeek(day), activities, todayIsoDate());
+                return (
+                  <Pressable
+                    key={session.id}
+                    onPress={() => canEdit && startEdit(session)}
+                    onLongPress={() => canEdit && handleDelete(session)}
+                    style={styles.sessionCard}
+                  >
+                    <View style={[styles.sportDot, styles[`sportDot_${session.sport ?? 'outro'}`]]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sessionType}>{ENDURANCE_WORKOUT_TYPE_LABELS[session.workoutType]}</Text>
+                      {summarizeSession(session) ? <Text style={styles.sessionSummary}>{summarizeSession(session)}</Text> : null}
+                      {session.structureNotes ? <Text style={styles.sessionNotes}>{session.structureNotes}</Text> : null}
+                      {match.status === 'cumprido' && (
+                        <Text style={styles.matchCumprido}>
+                          {MATCH_LABELS.cumprido}
+                          {match.actualDistanceKm != null ? ` · ${match.actualDistanceKm}km` : ''}
+                          {match.actualDurationMin != null ? ` · ${match.actualDurationMin}min` : ''}
+                        </Text>
+                      )}
+                      {match.status === 'nao_registrado' && <Text style={styles.matchPendente}>{MATCH_LABELS.nao_registrado}</Text>}
+                    </View>
+                  </Pressable>
+                );
+              })
             )}
 
             {isFormOpen && (
@@ -276,6 +318,8 @@ const styles = StyleSheet.create({
   sessionType: { fontFamily: typography.bodyMedium, fontSize: 13, color: colors.textPrimary },
   sessionSummary: { fontFamily: typography.mono, fontSize: 11, color: colors.textMuted, marginTop: 2 },
   sessionNotes: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginTop: 2, lineHeight: 15 },
+  matchCumprido: { fontFamily: typography.mono, fontSize: 11, color: colors.success, marginTop: 3 },
+  matchPendente: { fontFamily: typography.mono, fontSize: 11, color: colors.warning, marginTop: 3 },
   form: {
     backgroundColor: colors.surfaceElevated,
     borderRadius: radius.md,

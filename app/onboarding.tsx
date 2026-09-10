@@ -43,10 +43,16 @@ const SLIDES: Slide[] = [
     body: 'Cada corrida, pedal ou nado vira uma zona de intensidade (Z1 a Z5) e entra na sua carga semanal. Quando a carga sobe rápido demais pro seu corpo acompanhar, a gente avisa antes de virar lesão — e sugere quando programar uma semana mais leve.',
   },
   {
+    icon: 'calendar',
+    eyebrow: 'TREINOS · ENDURANCE',
+    title: 'Plano da semana, antes de treinar',
+    body: 'Monte (ou peça pro seu treinador montar) os treinos de corrida, bike e natação da semana — tipo de treino, zona alvo, distância ou duração. Depois que você sincronizar pelo Strava, a gente compara o que foi planejado com o que você de fato fez.',
+  },
+  {
     icon: 'bar-chart-2',
     eyebrow: 'TREINOS',
     title: 'Volume e progressão',
-    body: 'Acompanhamos quantas séries cada grupo muscular fez na semana, e sugerimos quando subir carga com base nas reps que você bateu e no RPE que você registrou — a mesma lógica de dupla progressão que um treinador usaria.',
+    body: 'Acompanhamos quantas séries cada grupo muscular fez na semana, e sugerimos quando subir carga com base nas reps que você bateu e no RPE que você registrou — a mesma lógica de dupla progressão que um treinador usaria. Toque no relógio ao lado de cada série pra cronometrar o descanso entre elas.',
   },
   {
     icon: 'zap',

@@ -23,6 +23,8 @@ import {
 } from '../lib/endurancePlan';
 import { dayOfWeekName } from '../lib/workouts';
 import { listStravaActivities, type StravaActivity } from '../lib/strava';
+import { estimateMaxHeartrate } from '../lib/trainingLoad';
+import { estimatePaceZones, formatPacePerKm, type PaceZoneEstimate } from '../lib/paceZones';
 
 const DAY_ORDER = [0, 1, 2, 3, 4, 5, 6];
 
@@ -90,6 +92,9 @@ export function EnduranceWeek({ athleteUserId, canEdit }: Props) {
   }, [load]);
 
   const byDay = groupSessionsByDay(sessions);
+  const maxHeartrate = estimateMaxHeartrate(activities);
+  const paceZones = maxHeartrate != null ? estimatePaceZones(activities, maxHeartrate) : [];
+  const paceForZone = (zone: number): PaceZoneEstimate | undefined => paceZones.find((z) => z.zone === zone);
 
   const startAdd = (dayOfWeek: number) => {
     setDraft({ ...EMPTY_DRAFT, dayOfWeek });
@@ -242,6 +247,11 @@ export function EnduranceWeek({ athleteUserId, canEdit }: Props) {
                         </Pressable>
                       ))}
                     </View>
+                    {draft.sport === 'corrida' && draft.targetZone != null && paceForZone(draft.targetZone)?.averagePaceSecPerKm != null && (
+                      <Text style={styles.paceHint}>
+                        Baseado no seu histórico: ~{formatPacePerKm(paceForZone(draft.targetZone)!.averagePaceSecPerKm!)} nessa zona
+                      </Text>
+                    )}
 
                     <View style={styles.row2}>
                       <TextField
@@ -329,6 +339,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   fieldLabel: { fontFamily: typography.bodyMedium, fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs, marginTop: spacing.xs },
+  paceHint: { fontFamily: typography.mono, fontSize: 11, color: colors.ignition, marginBottom: spacing.xs },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.xs },
   chip: {
     paddingHorizontal: spacing.sm + 2,

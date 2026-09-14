@@ -43,6 +43,7 @@ import {
   type WeeklyLoad,
 } from '../../src/lib/trainingLoad';
 import { computeReadiness } from '../../src/lib/readiness';
+import { estimatePaceZones, formatPacePerKm } from '../../src/lib/paceZones';
 import { getRecentAverageRpe } from '../../src/lib/workouts';
 import { detectDeloadStatus } from '../../src/lib/periodization';
 import { detectBrickSessions } from '../../src/lib/brickWorkouts';
@@ -572,6 +573,7 @@ function StravaSection({ userId }: { userId: string }) {
             <Button label="Sincronizar" variant="ghost" onPress={handleSync} loading={isSyncing} style={styles.syncButton} />
           </View>
           {activities.length > 0 ? <TrainingLoadCard activities={activities} maxHeartrate={maxHeartrate} /> : null}
+          {activities.length > 0 ? <PaceZonesCard activities={activities} maxHeartrate={maxHeartrate} /> : null}
           {activities.length > 0 ? <BrickSessionsCard activities={activities} /> : null}
           {activities.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma atividade sincronizada ainda — toque em "Sincronizar".</Text>
@@ -664,6 +666,29 @@ function TrainingLoadCard({ activities, maxHeartrate }: { activities: StravaActi
       <Text style={[styles.loadRisk, { color: RISK_COLORS[acwr.risk] }]}>{LOAD_RISK_LABELS[acwr.risk]}</Text>
       {sportBreakdown ? <Text style={styles.historyValues}>{sportBreakdown}</Text> : null}
       <DeloadHint weeks={weeks} acwrRisk={acwr.risk} />
+    </View>
+  );
+}
+
+// Pace típico por zona de FC, só corrida — ver src/lib/paceZones.ts. Não
+// mostra o card se nenhuma zona tem dado suficiente ainda (evita um card
+// cheio de "—" logo que o atleta conecta o Strava).
+function PaceZonesCard({ activities, maxHeartrate }: { activities: StravaActivity[]; maxHeartrate: number | null }) {
+  if (maxHeartrate == null) return null;
+  const zones = estimatePaceZones(activities, maxHeartrate);
+  if (!zones.some((z) => z.averagePaceSecPerKm != null)) return null;
+
+  return (
+    <View style={styles.loadCard}>
+      <Text style={styles.loadLabel}>SEU PACE POR ZONA (CORRIDA)</Text>
+      {zones.map((z) => (
+        <View key={z.zone} style={styles.paceZoneRow}>
+          <Text style={styles.paceZoneLabel}>
+            Z{z.zone} · {z.label}
+          </Text>
+          <Text style={styles.paceZoneValue}>{z.averagePaceSecPerKm != null ? formatPacePerKm(z.averagePaceSecPerKm) : '—'}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -821,6 +846,9 @@ const styles = StyleSheet.create({
   loadTrend: { fontFamily: typography.bodySemiBold, fontSize: 12 },
   loadRisk: { fontFamily: typography.bodySemiBold, fontSize: 12, marginTop: spacing.xs, marginBottom: 4 },
   deloadHint: { fontFamily: typography.body, fontSize: 11, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 16 },
+  paceZoneRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.xs },
+  paceZoneLabel: { fontFamily: typography.body, fontSize: 12, color: colors.textMuted },
+  paceZoneValue: { fontFamily: typography.mono, fontSize: 13, color: colors.textPrimary },
   stravaHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
